@@ -1,0 +1,34 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  "instructions": [
+    "/home/azrial/.config/opencode/instructions/SYSTEM-PROMPT.md"
+   ],
+
+  "lsp": false,
+  "formatter": false,
+
+  "autoupdate": false,
+  "share": "disabled",
+  "snapshot": false,
+
+  "default_agent": "BASE",
+  "agent": {
+    "build": { "disable": true },
+    "plan": { "disable": true },
+    "explore": { "disable": true },
+    "general": { "disable": true },
+    "BASE": {
+      "mode": "primary",
+      "temperature": 0.2
+    }
+  },
+
+  "mcp": {
+    "playwright": {
+      "type": "local",
+      "command": ["bun", "x", "@playwright/mcp@latest", "--headless", "--config", "/home/azrial/.config/opencode/playwright-mcp.json"],
+      "enabled": true
+    }
+  }
+}
