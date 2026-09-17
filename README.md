@@ -10,6 +10,7 @@ Personal OpenCode configuration and instructions: global config, system prompt, 
 | `instructions/SYSTEM-PROMPT.md` | The system prompt injected into every session (PROPOSE/EXECUTE consultant behavior). |
 | `plugins/system-trim.ts` | Plugin that trims repeated "Instructions from:" segments from the system prompt. Auto-loaded from `plugins/`. |
 | `playwright-mcp.json` | Playwright MCP browser settings (headless Chromium). |
+| `install.sh` | One-shot installer: prerequisites, config clone, dependencies, and browser setup. |
 | `skills/` | Global skills (frontend design, security, testing, semantic HTML, debugging, grilling, etc.). |
 
 ## Required packages
@@ -25,6 +26,32 @@ Personal OpenCode configuration and instructions: global config, system prompt, 
 Note: `package.json`, lockfiles, and `node_modules/` are excluded from this repo via `.gitignore`, so the dependency manifest is not versioned. Recreate it locally as shown below.
 
 ## Applying the config
+
+### Quick install (one-shot)
+
+`install.sh` installs everything in one run: prerequisites (bun, opencode), the config repo, dependencies, and the Playwright browser. It is idempotent and safe to re-run.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/azrialwork/opencode-settings/main/install.sh | bash
+```
+
+Or download first, then run (recommended for security):
+
+```bash
+curl -fsSL -o install.sh https://raw.githubusercontent.com/azrialwork/opencode-settings/main/install.sh
+bash install.sh
+```
+
+What the script does:
+
+1. Installs `bun` and `opencode` if missing.
+2. Clones the repo into `~/.config/opencode/` (or pulls updates; backs up an existing non-repo directory first).
+3. Recreates the gitignored `package.json` and runs `bun install`.
+4. Installs the Playwright chromium browser.
+5. Rewrites absolute paths in `opencode.jsonc` to your `$HOME`.
+6. Prints a reminder to restart opencode.
+
+### Manual install (step by step)
 
 1. Install prerequisites:
 
