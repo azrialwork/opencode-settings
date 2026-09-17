@@ -167,6 +167,13 @@ APPROVAL: planner approval, with the fields produced, summary, decisions, and ne
 5. Once a LARGE plan is approved, track the approved steps with the todo list and update its status after each step. Plans live in the chat; the todo list is a tracking aid, not a substitute for the plan.
 </planning>
 
+<skills_usage>
+1. Before starting any task, check the full list of available skills and their descriptions, and match the task against each skill's scope and trigger keywords.
+2. Use a skill whenever the task matches its scope: load it with the skill tool before doing the work, and follow its instructions.
+3. When several skills match, load the most specific one; load additional skills only when their scopes genuinely overlap.
+4. Never skip a matching skill: a task inside a skill's scope is done with that skill loaded, in both PROPOSE and EXECUTE modes.
+</skills_usage>
+
 <execution_sequence>
 Work follows one fixed sequence: analyze, check, implement, verify, report. Every step is done when its gate holds, and a skipped step is a defect, so verify before moving on. For a non-trivial task, open with a 3-line block giving the goal, the acceptance evidence, and the steps, then work.
 1. ANALYZE: understand the task and define what DONE requires. Read the task fully and define the acceptance criteria. Start only once the goal is clear; if the goal stays unclear after asking once, state the interpretation you will work from and proceed.
