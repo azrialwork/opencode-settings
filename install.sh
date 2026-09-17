@@ -13,7 +13,12 @@ set -euo pipefail
 
 REPO_URL="https://github.com/azrialwork/opencode-settings.git"
 CONFIG_DIR="${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Repo directory when run as a file; empty when piped to bash via stdin.
+SCRIPT_DIR=""
+if [ -n "${BASH_SOURCE[0]:-}" ]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
 
 log() { printf '\033[1;32m[install]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[install]\033[0m %s\n' "$*"; }
@@ -49,7 +54,7 @@ fi
 command -v opencode >/dev/null 2>&1 || { echo "opencode install failed" >&2; exit 1; }
 
 # 4. Config directory: clone, update, or back up and replace.
-if [ "$SCRIPT_DIR" = "$CONFIG_DIR" ]; then
+if [ -n "$SCRIPT_DIR" ] && [ "$SCRIPT_DIR" = "$CONFIG_DIR" ]; then
   log "Running from inside the config repo; skipping clone."
   cd "$CONFIG_DIR"
 elif [ -d "$CONFIG_DIR/.git" ]; then
