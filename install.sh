@@ -2,10 +2,12 @@
 #
 # install.sh — one-shot installer for the personal OpenCode configuration.
 #
-# Installs prerequisites (bun, opencode, Playwright chromium), clones or
-# updates the config repo into ~/.config/opencode, recreates the gitignored
-# package.json, installs dependencies, and fixes absolute paths for the
-# current user. Safe to re-run: existing steps are skipped or updated.
+# The repo is private, so this script requires the GitHub CLI (gh) to be
+# installed and authenticated. It installs prerequisites (bun, opencode,
+# Playwright chromium), clones or updates the config repo into
+# ~/.config/opencode, recreates the gitignored package.json, installs
+# dependencies, and fixes absolute paths for the current user. Safe to
+# re-run: existing steps are skipped or updated.
 
 set -euo pipefail
 
@@ -16,13 +18,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 log() { printf '\033[1;32m[install]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[install]\033[0m %s\n' "$*"; }
 
-# 1. Prerequisites: curl and git are required by every later step.
-for cmd in curl git; do
+# 1. Prerequisites: curl, git, and gh (GitHub CLI) are required.
+for cmd in curl git gh; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Missing required command: $cmd" >&2
     exit 1
   fi
 done
+
+# The repo is private, so gh must be authenticated to clone or fetch it.
+if ! gh auth status >/dev/null 2>&1; then
+  echo "gh is not authenticated. Run 'gh auth login' first." >&2
+  exit 1
+fi
 
 # 2. bun — runtime used by the Playwright MCP command and dependency installs.
 if ! command -v bun >/dev/null 2>&1; then
@@ -53,7 +61,7 @@ elif [ -d "$CONFIG_DIR/.git" ]; then
     backup_dir="${CONFIG_DIR}.bak-$(date +%Y%m%d-%H%M%S)"
     warn "Existing config has a different origin; backing it up to $backup_dir"
     mv "$CONFIG_DIR" "$backup_dir"
-    git clone "$REPO_URL" "$CONFIG_DIR"
+    gh repo clone azrialwork/opencode-settings "$CONFIG_DIR"
   fi
 elif [ -d "$CONFIG_DIR" ]; then
   backup_dir="${CONFIG_DIR}.bak-$(date +%Y%m%d-%H%M%S)"
@@ -62,7 +70,7 @@ elif [ -d "$CONFIG_DIR" ]; then
   git clone "$REPO_URL" "$CONFIG_DIR"
 else
   log "Cloning config repo..."
-  git clone "$REPO_URL" "$CONFIG_DIR"
+  gh repo clone azrialwork/opencode-settings "$CONFIG_DIR"
 fi
 cd "$CONFIG_DIR"
 

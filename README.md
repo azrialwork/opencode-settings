@@ -18,6 +18,7 @@ Personal OpenCode configuration and instructions: global config, system prompt, 
 | Package | Version | Why |
 |---|---|---|
 | `opencode` | latest | The application itself. |
+| `gh` (GitHub CLI) | latest | Required to fetch the config from the private repo. |
 | `bun` | latest | Runtime used by the MCP command (`bun x @playwright/mcp@latest`). |
 | `@opencode-ai/plugin` | `1.18.31` | Plugin SDK; `plugins/system-trim.ts` imports its `Plugin` type. |
 | `@playwright/mcp` | latest (fetched on demand) | MCP server for browser automation; run via `bun x`, no install needed. |
@@ -29,27 +30,35 @@ Note: `package.json`, lockfiles, and `node_modules/` are excluded from this repo
 
 ### Quick install (one-shot)
 
+The repo is private, so fetching the installer requires the GitHub CLI (`gh`). Install it and authenticate first:
+
+```bash
+# install gh (see https://cli.github.com/), then:
+gh auth login
+```
+
 `install.sh` installs everything in one run: prerequisites (bun, opencode), the config repo, dependencies, and the Playwright browser. It is idempotent and safe to re-run.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/azrialwork/opencode-settings/main/install.sh | bash
+gh api repos/azrialwork/opencode-settings/contents/install.sh -q '.content' | base64 -d | bash
 ```
 
 Or download first, then run (recommended for security):
 
 ```bash
-curl -fsSL -o install.sh https://raw.githubusercontent.com/azrialwork/opencode-settings/main/install.sh
+gh api repos/azrialwork/opencode-settings/contents/install.sh -q '.content' | base64 -d > install.sh
 bash install.sh
 ```
 
 What the script does:
 
-1. Installs `bun` and `opencode` if missing.
-2. Clones the repo into `~/.config/opencode/` (or pulls updates; backs up an existing non-repo directory first).
-3. Recreates the gitignored `package.json` and runs `bun install`.
-4. Installs the Playwright chromium browser.
-5. Rewrites absolute paths in `opencode.jsonc` to your `$HOME`.
-6. Prints a reminder to restart opencode.
+1. Checks that `gh` is installed and authenticated (required for the private repo).
+2. Installs `bun` and `opencode` if missing.
+3. Clones the repo into `~/.config/opencode/` via `gh repo clone` (or pulls updates; backs up an existing non-repo directory first).
+4. Recreates the gitignored `package.json` and runs `bun install`.
+5. Installs the Playwright chromium browser.
+6. Rewrites absolute paths in `opencode.jsonc` to your `$HOME`.
+7. Prints a reminder to restart opencode.
 
 ### Manual install (step by step)
 
@@ -61,10 +70,10 @@ What the script does:
    curl -fsSL https://bun.sh/install | bash
    ```
 
-2. Clone or copy this repo to the global config directory:
+2. Clone or copy this repo to the global config directory (the repo is private, so use `gh`):
 
    ```bash
-   git clone https://github.com/azrialwork/opencode-settings.git ~/.config/opencode
+   gh repo clone azrialwork/opencode-settings ~/.config/opencode
    ```
 
    Or copy the files manually into `~/.config/opencode/`.
