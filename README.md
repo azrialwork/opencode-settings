@@ -1,6 +1,6 @@
 # OpenCode Personal Configuration
 
-Personal OpenCode configuration and instructions: global config, system prompt, plugin, MCP setup, and skills.
+Personal OpenCode configuration and instructions: global config, system prompt, plugin, and MCP setup.
 
 ## Contents
 
@@ -11,7 +11,6 @@ Personal OpenCode configuration and instructions: global config, system prompt, 
 | `plugins/system-trim.ts` | Plugin that trims repeated "Instructions from:" segments from the system prompt. Auto-loaded from `plugins/`. |
 | `playwright-mcp.json` | Playwright MCP browser settings (headless Chromium). |
 | `install.sh` | One-shot installer: prerequisites, config clone, dependencies, and browser setup. |
-| `skills/` | Global skills (frontend design, security, testing, semantic HTML, debugging, grilling, etc.). |
 
 ## Required packages
 
@@ -133,4 +132,3 @@ The manual steps assume a normal Linux environment; on Termux use the one-shot i
 
 - `opencode.jsonc` disables `lsp`, `formatter`, `autoupdate`, `share`, and `snapshot`; only the `BASE` agent is enabled (`default_agent: "BASE"`).
 - The plugin is auto-discovered: any `*.ts`/`*.js` file under `~/.config/opencode/plugins/` is loaded without a `plugin` entry in the config.
-- Skills are auto-scanned from `~/.config/opencode/skills/<name>/SKILL.md`.
