@@ -3,8 +3,8 @@
 # install.sh — one-shot installer for the personal OpenCode configuration.
 #
 # The repo is private, so this script requires the GitHub CLI (gh) to be
-# installed and authenticated. It installs prerequisites (bun, opencode,
-# Playwright chromium), clones or updates the config repo into
+# installed and authenticated. It installs prerequisites (nodejs, npm,
+# opencode, Playwright chromium), clones or updates the config repo into
 # ~/.config/opencode, recreates the gitignored package.json, installs
 # dependencies, and fixes absolute paths for the current user. Safe to
 # re-run: existing steps are skipped or updated.
@@ -37,13 +37,19 @@ if ! gh auth status >/dev/null 2>&1; then
   exit 1
 fi
 
-# 2. bun — runtime used by the Playwright MCP command and dependency installs.
-if ! command -v bun >/dev/null 2>&1; then
-  log "Installing bun..."
-  curl -fsSL https://bun.sh/install | bash
-  export PATH="$HOME/.bun/bin:$PATH"
+# 2. nodejs + npm — runtime used by the Playwright MCP command and dependency installs.
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  log "Installing nodejs and npm..."
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update -qq
+    apt-get install -y -qq nodejs npm
+  else
+    echo "No supported package manager found; install nodejs and npm manually." >&2
+    exit 1
+  fi
 fi
-command -v bun >/dev/null 2>&1 || { echo "bun install failed" >&2; exit 1; }
+command -v node >/dev/null 2>&1 || { echo "node install failed" >&2; exit 1; }
+command -v npm >/dev/null 2>&1 || { echo "npm install failed" >&2; exit 1; }
 
 # 3. opencode — the application itself.
 if ! command -v opencode >/dev/null 2>&1; then
@@ -85,19 +91,20 @@ if [ ! -f package.json ]; then
   cat > package.json <<'EOF'
 {
   "dependencies": {
-    "@opencode-ai/plugin": "1.18.31"
+    "@opencode-ai/plugin": "1.18.31",
+    "playwright": "^1.63.0"
   }
 }
 EOF
 fi
 
-# 6. Install dependencies (plugin SDK).
-log "Installing dependencies (bun install)..."
-bun install
+# 6. Install dependencies (plugin SDK and playwright).
+log "Installing dependencies (npm install)..."
+npm install
 
 # 7. Playwright browser used by the MCP server.
 log "Installing Playwright chromium browser..."
-bunx playwright install chromium
+node node_modules/playwright/cli.js install chromium
 
 # 8. Fix absolute paths in opencode.jsonc for the current user.
 if grep -q "/home/azrial" opencode.jsonc; then
@@ -105,7 +112,13 @@ if grep -q "/home/azrial" opencode.jsonc; then
   sed -i "s|/home/azrial|$HOME|g" opencode.jsonc
 fi
 
-# 9. Done.
+# 9. Replace bun with npx in the MCP command (bunx is incompatible with proot).
+if grep -q '"bun", "x"' opencode.jsonc; then
+  log "Replacing bun with npx in the MCP command..."
+  sed -i 's|"bun", "x"|"npx", "-y"|g' opencode.jsonc
+fi
+
+# 10. Done.
 log "Installation complete."
 echo
 echo "Next step: quit and restart opencode so the new config is loaded."
