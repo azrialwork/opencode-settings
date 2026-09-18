@@ -17,7 +17,6 @@ Personal OpenCode configuration and instructions: global config, system prompt, 
 | Package | Version | Why |
 |---|---|---|
 | `opencode` | latest | The application itself. |
-| `gh` (GitHub CLI) | latest | Required to fetch the config from the private repo. |
 | `bun` | latest | Runtime used by the MCP command (`bun x @playwright/mcp@latest`) and dependency installs. On Termux it comes from the official `bun` package. |
 | `@opencode-ai/plugin` | `1.18.31` | Plugin SDK; `plugins/system-trim.ts` imports its `Plugin` type. |
 | `playwright` | latest (fetched on demand) | CLI used to install the browser binaries (`bunx playwright install chromium`). Not used on Termux. |
@@ -34,32 +33,27 @@ Note (Termux): on native Termux (Android, no proot) `install.sh` detects the env
 
 ### Quick install (one-shot)
 
-The repo is private, so fetching the installer requires the GitHub CLI (`gh`). Install it and authenticate first:
-
-```bash
-# install gh (see https://cli.github.com/), then:
-gh auth login
-```
+The repo is public, so the installer can be fetched directly with curl — no GitHub authentication needed:
 
 `install.sh` installs everything in one run: prerequisites (bun, opencode), the config repo, dependencies, and the browser (Playwright chromium, or the Termux `x11-repo` chromium on native Termux). It is idempotent and safe to re-run.
 
 ```bash
-gh api repos/azrialwork/opencode-settings/contents/install.sh -q '.content' | base64 -d | bash
+curl -fsSL https://raw.githubusercontent.com/azrialwork/opencode-settings/main/install.sh | bash
 ```
 
 Or download first, then run (recommended for security):
 
 ```bash
-gh api repos/azrialwork/opencode-settings/contents/install.sh -q '.content' | base64 -d > install.sh
+curl -fsSL https://raw.githubusercontent.com/azrialwork/opencode-settings/main/install.sh -o install.sh
 bash install.sh
 ```
 
 What the script does:
 
-1. Checks that `gh` is installed and authenticated (required for the private repo).
+1. Checks that `curl` and `git` are installed.
 2. Installs `bun` and `opencode` if missing (on Termux: the `bun` package and the `bd-loser/opencode-bionic` aarch64 build, falling back to `guysoft/opencode-termux`).
 3. Adds `BUN_OPTIONS="--backend=copyfile"` to `~/.bashrc` (required under proot; skipped on Termux).
-4. Clones the repo into `~/.config/opencode/` via `gh repo clone` (or pulls updates; backs up an existing non-repo directory first).
+4. Clones the repo into `~/.config/opencode/` via `git clone` (or pulls updates; backs up an existing non-repo directory first).
 5. Recreates the gitignored `package.json` and runs `bun install` (on Termux it also patches playwright-core in the bun cache so android is treated as linux).
 6. Installs the Playwright chromium browser (`pkg install chromium` from the Termux `x11-repo` on Termux).
 7. Rewrites absolute paths in `opencode.jsonc` to your `$HOME` (on Termux it also rewrites the `mcp.playwright` command to `bunx --bun @playwright/mcp` with `--executable-path`).
@@ -75,7 +69,7 @@ On native Termux the script detects the environment (`$PREFIX` set and `uname -o
 - chromium is installed from the Termux `x11-repo` and launched with `--executable-path $PREFIX/bin/chromium-browser --no-sandbox` (Android cannot use the Chromium sandbox).
 - `PLAYWRIGHT_BROWSERS_PATH=0` is set for the MCP server so it never looks for downloaded browser binaries.
 
-Requirements: an aarch64 device and `gh auth login` first. Run the same one-shot command as above.
+Requirements: an aarch64 device. Run the same one-shot command as above.
 
 ### Manual install (step by step)
 
@@ -92,10 +86,10 @@ The manual steps assume a normal Linux environment; on Termux use the one-shot i
    export BUN_OPTIONS="--backend=copyfile"
    ```
 
-2. Clone or copy this repo to the global config directory (the repo is private, so use `gh`):
+2. Clone or copy this repo to the global config directory:
 
    ```bash
-   gh repo clone azrialwork/opencode-settings ~/.config/opencode
+   git clone https://github.com/azrialwork/opencode-settings ~/.config/opencode
    ```
 
    Or copy the files manually into `~/.config/opencode/`.

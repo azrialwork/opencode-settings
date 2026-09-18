@@ -2,8 +2,8 @@
 #
 # install.sh — one-shot installer for the personal OpenCode configuration.
 #
-# The repo is private, so this script requires the GitHub CLI (gh) to be
-# installed and authenticated. It installs prerequisites (bun, opencode,
+# The repo is public, so no GitHub authentication is needed. It installs
+# prerequisites (bun, opencode,
 # Playwright chromium), clones or updates the config repo into
 # ~/.config/opencode, recreates the gitignored package.json, installs
 # dependencies, and fixes absolute paths for the current user. Safe to
@@ -36,8 +36,8 @@ fi
 log() { printf '\033[1;32m[install]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[install]\033[0m %s\n' "$*"; }
 
-# 1. Prerequisites: curl, git, and gh (GitHub CLI) are required. On Termux
-#    they are installed via pkg, together with unzip (opencode release) and
+# 1. Prerequisites: curl and git are required. On Termux they are installed
+#    via pkg, together with unzip (opencode release) and
 #    ripgrep (opencode runtime dependency). pkg upgrade runs first because
 #    Termux requires a consistent package set:
 #    a mismatched one breaks the chromium install with "cannot locate
@@ -50,20 +50,14 @@ if [ "$TERMUX" = "1" ]; then
   pkg upgrade -y || true
   pkg reinstall -y libc++
   pkg install -f -y
-  pkg install -y git curl gh unzip ripgrep
+  pkg install -y git curl unzip ripgrep
 else
-  for cmd in curl git gh; do
+  for cmd in curl git; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
       echo "Missing required command: $cmd" >&2
       exit 1
     fi
   done
-fi
-
-# The repo is private, so gh must be authenticated to clone or fetch it.
-if ! gh auth status >/dev/null 2>&1; then
-  echo "gh is not authenticated. Run 'gh auth login' first." >&2
-  exit 1
 fi
 
 # 2. bun — runtime used by the Playwright MCP command and dependency installs.
@@ -109,8 +103,8 @@ fi
 install_opencode_bionic() {
   log "Installing opencode (Termux native build from bd-loser/opencode-bionic)..."
   local deb_url tmpdir
-  deb_url="$(gh api repos/bd-loser/opencode-bionic/releases/latest \
-    --jq '.assets[] | select(.name | endswith("_aarch64.deb")) | .browser_download_url' | head -n1 || true)"
+  deb_url="$(curl -fsSL https://api.github.com/repos/bd-loser/opencode-bionic/releases/latest \
+    | grep -o 'https://[^"]*_aarch64\.deb' | head -n1 || true)"
   [ -n "$deb_url" ] || return 1
   tmpdir="$(mktemp -d)"
   if curl -fsSL "$deb_url" -o "$tmpdir/opencode.deb" && dpkg -i "$tmpdir/opencode.deb"; then
@@ -127,8 +121,8 @@ install_opencode_bionic() {
 install_opencode_guysoft() {
   log "Installing opencode (Termux native build from guysoft/opencode-termux)..."
   local asset_url tmpdir lib
-  asset_url="$(gh api repos/guysoft/opencode-termux/releases/latest \
-    --jq '.assets[] | select(.name | endswith("android-aarch64.zip")) | .browser_download_url' | head -n1 || true)"
+  asset_url="$(curl -fsSL https://api.github.com/repos/guysoft/opencode-termux/releases/latest \
+    | grep -o 'https://[^"]*android-aarch64\.zip' | head -n1 || true)"
   if [ -z "$asset_url" ]; then
     echo "No android-aarch64.zip asset found in guysoft/opencode-termux releases." >&2
     return 1
@@ -205,7 +199,7 @@ elif [ -d "$CONFIG_DIR/.git" ]; then
     backup_dir="${CONFIG_DIR}.bak-$(date +%Y%m%d-%H%M%S)"
     warn "Existing config has a different origin; backing it up to $backup_dir"
     mv "$CONFIG_DIR" "$backup_dir"
-    gh repo clone azrialwork/opencode-settings "$CONFIG_DIR"
+    git clone "$REPO_URL" "$CONFIG_DIR"
   fi
 elif [ -d "$CONFIG_DIR" ]; then
   backup_dir="${CONFIG_DIR}.bak-$(date +%Y%m%d-%H%M%S)"
@@ -214,7 +208,7 @@ elif [ -d "$CONFIG_DIR" ]; then
   git clone "$REPO_URL" "$CONFIG_DIR"
 else
   log "Cloning config repo..."
-  gh repo clone azrialwork/opencode-settings "$CONFIG_DIR"
+  git clone "$REPO_URL" "$CONFIG_DIR"
 fi
 cd "$CONFIG_DIR"
 
