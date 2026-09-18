@@ -164,21 +164,32 @@ else
 fi
 cd "$CONFIG_DIR"
 
-# 6. package.json is gitignored, so recreate it when missing.
+# 6. package.json is gitignored, so recreate it when missing. allowScripts
+#    pre-approves the msgpackr-extract native build so npm 11.6+ (which
+#    blocks dependency install scripts by default) installs without warnings.
 if [ ! -f package.json ]; then
   log "Creating package.json..."
   cat > package.json <<'EOF'
 {
   "dependencies": {
     "@opencode-ai/plugin": "1.18.31"
+  },
+  "allowScripts": {
+    "msgpackr-extract": true
   }
 }
 EOF
 fi
 
 # 7. Install dependencies (plugin SDK). npm on Termux, bun elsewhere.
+#    On Termux npm itself is upgraded first (nodejs-lts ships an older npm),
+#    and install scripts are approved so npm 11.6+ stays quiet: allowScripts
+#    blocks dependency install scripts by default and warns about them.
 if [ "$TERMUX" = "1" ]; then
-  log "Installing dependencies (npm install)..."
+  log "Upgrading npm and installing dependencies..."
+  npm install -g npm@latest
+  npm install
+  npm install-scripts approve --all || true
   npm install
 else
   log "Installing dependencies (bun install)..."

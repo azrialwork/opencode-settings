@@ -60,7 +60,7 @@ What the script does:
 2. Installs `bun` and `opencode` if missing (on Termux: `nodejs-lts` and the `guysoft/opencode-termux` aarch64 build).
 3. Adds `BUN_OPTIONS="--backend=copyfile"` to `~/.bashrc` (required under proot; skipped on Termux).
 4. Clones the repo into `~/.config/opencode/` via `gh repo clone` (or pulls updates; backs up an existing non-repo directory first).
-5. Recreates the gitignored `package.json` and runs `bun install` (`npm install` on Termux).
+5. Recreates the gitignored `package.json` and runs `bun install` (on Termux: upgrades npm, runs `npm install`, and approves install scripts for a warning-free install).
 6. Installs the Playwright chromium browser (`pkg install chromium` from the Termux `x11-repo` on Termux).
 7. Rewrites absolute paths in `opencode.jsonc` to your `$HOME` (on Termux it also rewrites the `mcp.playwright` command to `npx @playwright/mcp` with `--executable-path`).
 8. Prints a reminder to restart opencode.
@@ -70,7 +70,7 @@ What the script does:
 On native Termux the script detects the environment (`$PREFIX` set and `uname -o` = `Android`) and installs a fully native stack — no proot required:
 
 - `pkg upgrade` runs first so the package set is consistent; a mismatched set (e.g. ffmpeg vs libplacebo) breaks the chromium install with "cannot locate symbol" link errors. `libc++` is then reinstalled and broken packages fixed, which recovers from an interrupted update that corrupted `libc++_shared.so`.
-- `nodejs-lts` replaces bun; the MCP server runs via `npx -y @playwright/mcp@0.0.78`.
+- `nodejs-lts` replaces bun; the MCP server runs via `npx -y @playwright/mcp@0.0.78`. npm is upgraded to latest and dependency install scripts are approved (npm 11.6+ blocks them by default and warns).
 - opencode comes from the `guysoft/opencode-termux` aarch64 build (upstream ships no Android binary and the npm postinstall fails on Termux).
 - chromium is installed from the Termux `x11-repo` and launched with `--executable-path $PREFIX/bin/chromium-browser --no-sandbox` (Android cannot use the Chromium sandbox).
 - `PLAYWRIGHT_BROWSERS_PATH=0` is set for the MCP server so it never looks for downloaded browser binaries.
