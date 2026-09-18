@@ -10,10 +10,10 @@
 # re-run: existing steps are skipped or updated.
 #
 # On native Termux (Android, no proot) the script takes a different path:
-# nodejs + npx replace bun, opencode comes from the bd-loser/opencode-bionic
-# aarch64 build (falling back to guysoft/opencode-termux), and chromium is
-# installed from the Termux x11-repo and launched via --executable-path with
-# --no-sandbox.
+# bun comes from the official Termux package, opencode from the
+# bd-loser/opencode-bionic aarch64 build (falling back to
+# guysoft/opencode-termux), and chromium is installed from the Termux
+# x11-repo and launched via --executable-path with --no-sandbox.
 
 set -euo pipefail
 
@@ -37,9 +37,9 @@ log() { printf '\033[1;32m[install]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[install]\033[0m %s\n' "$*"; }
 
 # 1. Prerequisites: curl, git, and gh (GitHub CLI) are required. On Termux
-#    they are installed via pkg, together with nodejs (replaces bun), unzip
-#    (opencode release), and ripgrep (opencode runtime dependency). pkg
-#    upgrade runs first because Termux requires a consistent package set:
+#    they are installed via pkg, together with unzip (opencode release) and
+#    ripgrep (opencode runtime dependency). pkg upgrade runs first because
+#    Termux requires a consistent package set:
 #    a mismatched one breaks the chromium install with "cannot locate
 #    symbol" link errors (e.g. ffmpeg vs libplacebo). An interrupted update
 #    can also corrupt libc++_shared.so, which `pkg upgrade` does not repair
@@ -50,7 +50,7 @@ if [ "$TERMUX" = "1" ]; then
   pkg upgrade -y || true
   pkg reinstall -y libc++
   pkg install -f -y
-  pkg install -y git curl gh nodejs-lts unzip ripgrep
+  pkg install -y git curl gh unzip ripgrep
 else
   for cmd in curl git gh; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -67,23 +67,27 @@ if ! gh auth status >/dev/null 2>&1; then
 fi
 
 # 2. bun — runtime used by the Playwright MCP command and dependency installs.
-#    Skipped on Termux: bun is installable there (pkg install bun), but the
-#    Android build reports process.platform="android", which playwright-core
-#    rejects with "Unsupported platform", so node + npx are used instead.
+#    On Termux it comes from the official Termux package (pkg install bun);
+#    elsewhere from the bun.sh installer. The Android build reports
+#    process.platform="android", which playwright-core rejects, so the
+#    coreBundle.js patch in step 7 makes android behave like linux.
 if [ "$TERMUX" = "1" ]; then
-  log "Skipping bun on Termux; the MCP server runs under node (npx)."
+  if ! command -v bun >/dev/null 2>&1; then
+    log "Installing bun (Termux package)..."
+    pkg install -y bun
+  fi
 else
   if ! command -v bun >/dev/null 2>&1; then
     log "Installing bun..."
     curl -fsSL https://bun.sh/install | bash
     export PATH="$HOME/.bun/bin:$PATH"
   fi
-  command -v bun >/dev/null 2>&1 || { echo "bun install failed" >&2; exit 1; }
 fi
+command -v bun >/dev/null 2>&1 || { echo "bun install failed" >&2; exit 1; }
 
 # 3. BUN_OPTIONS — proot's link2symlink converts hardlinks to .l2s symlinks,
 #    which breaks bunx and bun install. Force bun to copy files instead.
-#    Irrelevant on Termux, where bun is not used.
+#    Irrelevant on Termux, where hardlinks work natively.
 if [ "$TERMUX" != "1" ]; then
   if ! grep -q 'BUN_OPTIONS' "$HOME/.bashrc" 2>/dev/null; then
     log "Adding BUN_OPTIONS=--backend=copyfile to ~/.bashrc..."
@@ -231,26 +235,28 @@ if [ ! -f package.json ]; then
 EOF
 fi
 
-# 7. Install dependencies (plugin SDK). npm on Termux, bun elsewhere.
-#    On Termux npm itself is upgraded first (nodejs-lts ships an older npm),
-#    and install scripts are approved so npm 11.6+ stays quiet: allowScripts
-#    blocks dependency install scripts by default and warns about them.
+# 7. Install dependencies (plugin SDK) with bun on every platform, including
+#    Termux. The allowScripts field in package.json is npm-specific and
+#    ignored by bun; it is harmless to keep.
 if [ "$TERMUX" = "1" ]; then
-  log "Upgrading npm and installing dependencies..."
-  npm install -g npm@latest
-  npm install
-  npm install-scripts approve --all || true
-  npm install
+  log "Installing dependencies (bun install)..."
+  if ! bun install; then
+    warn "bun install failed; retrying with BUN_OPTIONS=--backend=copyfile..."
+    if ! BUN_OPTIONS="--backend=copyfile" bun install; then
+      echo "bun install failed on Termux. Try: pkg reinstall bun, then re-run this script." >&2
+      exit 1
+    fi
+  fi
   # playwright-core rejects Android with "Unsupported platform: android":
-  # node on Termux is built with --dest-os=android, so process.platform is
-  # "android", and playwright-core only knows linux/darwin/win32. Pre-warm
-  # the npx cache (the MCP server runs via `npx -y @playwright/mcp`), then
+  # bun on Termux reports process.platform="android" (the Android build),
+  # and playwright-core only knows linux/darwin/win32. Pre-warm the bun
+  # cache (the MCP server runs via `bunx --bun @playwright/mcp`), then
   # patch coreBundle.js so android is treated as linux — the same approach
   # Termux playwright distributions use. Idempotent: already-patched files
   # no longer match the sed patterns.
   log "Patching playwright-core for Termux (android treated as linux)..."
-  npx -y @playwright/mcp@0.0.78 --help >/dev/null 2>&1 || true
-  PW_CORES="$(find "$HOME/.npm/_npx" -path '*/playwright-core/lib/coreBundle.js' 2>/dev/null || true)"
+  bunx --bun @playwright/mcp@0.0.78 --help >/dev/null 2>&1 || true
+  PW_CORES="$(find "$HOME/.bun/install/cache" -path '*/playwright-core/lib/coreBundle.js' 2>/dev/null || true)"
   if [ -n "$PW_CORES" ]; then
     for f in $PW_CORES; do
       sed -i \
@@ -258,9 +264,9 @@ if [ "$TERMUX" = "1" ]; then
         -e 's/process\.platform !== "linux"/process.platform !== "linux" \&\& process.platform !== "android"/g' \
         "$f"
     done
-    log "Patched playwright-core in the npx cache."
+    log "Patched playwright-core in the bun cache."
   else
-    warn "playwright-core not found in npx cache; the MCP server may fail with 'Unsupported platform: android'."
+    warn "playwright-core not found in the bun cache; the MCP server may fail with 'Unsupported platform: android'."
   fi
 else
   log "Installing dependencies (bun install)..."
@@ -365,14 +371,15 @@ if [ -n "$CHROME_BIN" ] && [ -x "$CHROME_BIN" ]; then
   fi
 fi
 
-# 9a. On Termux the repo's bun-based MCP command cannot run, so rewrite the
-#     mcp.playwright command to node (npx) against the native chromium
-#     binary. Idempotent: skipped once the command already contains "npx".
+# 9a. On Termux the repo's bun-based MCP command is rewritten to run under
+#     bun (bunx --bun) against the native chromium binary. Idempotent: the
+#     sed replacement rewrites the command to the same value once done, and
+#     the environment block is only appended when missing.
 if [ "$TERMUX" = "1" ]; then
-  if ! grep -q '"npx"' opencode.jsonc; then
-    log "Rewriting mcp.playwright command for Termux (npx + native chromium)..."
-    sed -i "s|^\(\s*\)\"command\": \[\".*@playwright/mcp.*|\1\"command\": [\"npx\", \"-y\", \"@playwright/mcp@0.0.78\", \"--headless\", \"--no-sandbox\", \"--executable-path\", \"$PREFIX/bin/chromium-browser\", \"--config\", \"$CONFIG_DIR/playwright-mcp.json\"],|" opencode.jsonc
-    sed -i '/"command": \["npx"/a\      "environment": {\n        "PLAYWRIGHT_BROWSERS_PATH": "0"\n      },' opencode.jsonc
+  log "Rewriting mcp.playwright command for Termux (bunx --bun + native chromium)..."
+  sed -i "s|^\(\s*\)\"command\": \[\".*@playwright/mcp.*|\1\"command\": [\"bunx\", \"--bun\", \"@playwright/mcp@0.0.78\", \"--headless\", \"--no-sandbox\", \"--executable-path\", \"$PREFIX/bin/chromium-browser\", \"--config\", \"$CONFIG_DIR/playwright-mcp.json\"],|" opencode.jsonc
+  if ! grep -q 'PLAYWRIGHT_BROWSERS_PATH' opencode.jsonc; then
+    sed -i '/"command": \["bunx"/a\      "environment": {\n        "PLAYWRIGHT_BROWSERS_PATH": "0"\n      },' opencode.jsonc
   fi
 fi
 
