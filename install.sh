@@ -10,9 +10,10 @@
 # re-run: existing steps are skipped or updated.
 #
 # On native Termux (Android, no proot) the script takes a different path:
-# nodejs + npx replace bun, opencode comes from the guysoft/opencode-termux
-# aarch64 build, and chromium is installed from the Termux x11-repo and
-# launched via --executable-path with --no-sandbox.
+# nodejs + npx replace bun, opencode comes from the bd-loser/opencode-bionic
+# aarch64 build (falling back to guysoft/opencode-termux), and chromium is
+# installed from the Termux x11-repo and launched via --executable-path with
+# --no-sandbox.
 
 set -euo pipefail
 
@@ -66,8 +67,9 @@ if ! gh auth status >/dev/null 2>&1; then
 fi
 
 # 2. bun — runtime used by the Playwright MCP command and dependency installs.
-#    Skipped on Termux: bun has no official Termux support, so node + npx
-#    are used there instead.
+#    Skipped on Termux: bun is installable there (pkg install bun), but the
+#    Android build reports process.platform="android", which playwright-core
+#    rejects with "Unsupported platform", so node + npx are used instead.
 if [ "$TERMUX" = "1" ]; then
   log "Skipping bun on Termux; the MCP server runs under node (npx)."
 else
@@ -95,45 +97,87 @@ EOF
 fi
 
 # 4. opencode — the application itself. Upstream ships no Android binary and
-#    the npm postinstall fails on Termux, so the native aarch64 build from
-#    guysoft/opencode-termux is used there.
+#    the npm postinstall fails on Termux, so a native aarch64 build is used
+#    there. bd-loser/opencode-bionic is preferred: it tracks upstream every
+#    12 hours, while guysoft/opencode-termux lags behind. The bionic build
+#    is a single self-contained binary (needs only libc/libdl/libm), so no
+#    shared libraries are copied; guysoft stays as a fallback.
+install_opencode_bionic() {
+  log "Installing opencode (Termux native build from bd-loser/opencode-bionic)..."
+  local deb_url tmpdir
+  deb_url="$(gh api repos/bd-loser/opencode-bionic/releases/latest \
+    --jq '.assets[] | select(.name | endswith("_aarch64.deb")) | .browser_download_url' | head -n1 || true)"
+  [ -n "$deb_url" ] || return 1
+  tmpdir="$(mktemp -d)"
+  if curl -fsSL "$deb_url" -o "$tmpdir/opencode.deb" && dpkg -i "$tmpdir/opencode.deb"; then
+    rm -rf "$tmpdir"
+    return 0
+  fi
+  rm -rf "$tmpdir"
+  return 1
+}
+
+# Fallback: the older guysoft/opencode-termux build. Its release bundles
+# opencode.bin plus shared libraries; libc++_shared.so is deliberately NOT
+# copied (see the comment in the loop below).
+install_opencode_guysoft() {
+  log "Installing opencode (Termux native build from guysoft/opencode-termux)..."
+  local asset_url tmpdir lib
+  asset_url="$(gh api repos/guysoft/opencode-termux/releases/latest \
+    --jq '.assets[] | select(.name | endswith("android-aarch64.zip")) | .browser_download_url' | head -n1 || true)"
+  if [ -z "$asset_url" ]; then
+    echo "No android-aarch64.zip asset found in guysoft/opencode-termux releases." >&2
+    return 1
+  fi
+  tmpdir="$(mktemp -d)"
+  if ! curl -fsSL "$asset_url" -o "$tmpdir/opencode.zip"; then
+    rm -rf "$tmpdir"
+    return 1
+  fi
+  if ! unzip -q "$tmpdir/opencode.zip" -d "$tmpdir/opencode"; then
+    rm -rf "$tmpdir"
+    return 1
+  fi
+  mkdir -p "$PREFIX/bin" "$PREFIX/libexec/opencode" "$PREFIX/lib"
+  mv "$tmpdir/opencode/opencode" "$PREFIX/bin/opencode"
+  chmod +x "$PREFIX/bin/opencode"
+  mv "$tmpdir/opencode/opencode.bin" "$PREFIX/libexec/opencode/opencode.bin"
+  chmod +x "$PREFIX/libexec/opencode/opencode.bin"
+  # Copy the shared libraries the opencode binary needs. libc++_shared.so
+  # is deliberately NOT copied: the release bundles its own copy built
+  # against an older NDK, and overwriting $PREFIX/lib/libc++_shared.so
+  # (owned by the Termux libc++ package) drops symbols that libplacebo.so
+  # needs, breaking ffmpeg/pipewire/chromium with "cannot locate symbol"
+  # link errors. The opencode binaries only need libc/libdl/libm anyway.
+  for lib in libtagfix.so libopentui.so librust_pty_arm64.so; do
+    if [ -f "$tmpdir/opencode/$lib" ]; then
+      mv "$tmpdir/opencode/$lib" "$PREFIX/lib/"
+    else
+      warn "Missing $lib in opencode release; skipping."
+    fi
+  done
+  rm -rf "$tmpdir"
+}
+
 if [ "$TERMUX" = "1" ]; then
+  # Upgrade path: an earlier guysoft install leaves opencode.bin and shared
+  # libraries behind; remove them so the up-to-date bionic build replaces
+  # the old binary.
+  if [ -f "$PREFIX/libexec/opencode/opencode.bin" ]; then
+    log "Removing old guysoft opencode install before upgrading..."
+    rm -f "$PREFIX/bin/opencode"
+    rm -rf "$PREFIX/libexec/opencode"
+    rm -f "$PREFIX/lib/libtagfix.so" "$PREFIX/lib/libopentui.so" "$PREFIX/lib/librust_pty_arm64.so"
+  fi
   if ! command -v opencode >/dev/null 2>&1; then
-    log "Installing opencode (Termux native build from guysoft/opencode-termux)..."
     if [ "$(uname -m)" != "aarch64" ]; then
       echo "The Termux opencode build only supports aarch64; got $(uname -m)." >&2
       exit 1
     fi
-    asset_url="$(gh api repos/guysoft/opencode-termux/releases/latest \
-      --jq '.assets[] | select(.name | endswith("android-aarch64.zip")) | .browser_download_url' | head -n1)"
-    if [ -z "$asset_url" ]; then
-      echo "No android-aarch64.zip asset found in guysoft/opencode-termux releases." >&2
-      exit 1
+    if ! install_opencode_bionic; then
+      warn "opencode-bionic install failed; falling back to guysoft/opencode-termux..."
+      install_opencode_guysoft
     fi
-    tmpdir="$(mktemp -d)"
-    trap 'rm -rf "$tmpdir"' EXIT
-    curl -fsSL "$asset_url" -o "$tmpdir/opencode.zip"
-    unzip -q "$tmpdir/opencode.zip" -d "$tmpdir/opencode"
-    mkdir -p "$PREFIX/bin" "$PREFIX/libexec/opencode" "$PREFIX/lib"
-    mv "$tmpdir/opencode/opencode" "$PREFIX/bin/opencode"
-    chmod +x "$PREFIX/bin/opencode"
-    mv "$tmpdir/opencode/opencode.bin" "$PREFIX/libexec/opencode/opencode.bin"
-    chmod +x "$PREFIX/libexec/opencode/opencode.bin"
-    # Copy the shared libraries the opencode binary needs. libc++_shared.so
-    # is deliberately NOT copied: the release bundles its own copy built
-    # against an older NDK, and overwriting $PREFIX/lib/libc++_shared.so
-    # (owned by the Termux libc++ package) drops symbols that libplacebo.so
-    # needs, breaking ffmpeg/pipewire/chromium with "cannot locate symbol"
-    # link errors. The opencode binaries only need libc/libdl/libm anyway.
-    for lib in libtagfix.so libopentui.so librust_pty_arm64.so; do
-      if [ -f "$tmpdir/opencode/$lib" ]; then
-        mv "$tmpdir/opencode/$lib" "$PREFIX/lib/"
-      else
-        warn "Missing $lib in opencode release; skipping."
-      fi
-    done
-    rm -rf "$tmpdir"
-    trap - EXIT
   fi
 else
   if ! command -v opencode >/dev/null 2>&1; then
