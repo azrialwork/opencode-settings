@@ -59,7 +59,7 @@ What the script does:
 8. Installs chromium system dependencies for the distro (skipped on Termux).
 9. Verifies the chromium binary's shared libraries resolve (skipped on Termux).
 10. Smoke-tests the chromium binary launch.
-11. On Termux: rewrites the `mcp.playwright` command to `bunx --bun @playwright/mcp@0.0.81` with `--executable-path`, and sets three environment variables (`PLAYWRIGHT_BROWSERS_PATH=0`, `PWMCP_PROFILES_DIR_FOR_TEST`, `PWTEST_SERVER_REGISTRY`) that bypass the remaining Android platform checks.
+11. On Termux: rewrites the `mcp.playwright` command to `bunx --bun @playwright/mcp@0.0.81` with `--executable-path`, and sets four environment variables (`PLAYWRIGHT_BROWSERS_PATH=0`, `PWMCP_PROFILES_DIR_FOR_TEST`, `PWTEST_SERVER_REGISTRY`, `PWTEST_DAEMON_SESSION_DIR`) that bypass the remaining Android platform checks.
 12. Rewrites absolute paths in `opencode.jsonc` to your `$HOME`.
 13. Prints a reminder to restart opencode.
 
@@ -71,7 +71,7 @@ On native Termux the script detects the environment (`$PREFIX` set and `uname -o
 - bun comes from the official Termux package (`pkg install bun`).
 - opencode comes from the `bd-loser/opencode-bionic` aarch64 build (upstream ships no Android binary), falling back to `guysoft/opencode-termux`.
 - chromium is installed from the Termux `x11-repo` and launched with `--executable-path $PREFIX/bin/chromium-browser --no-sandbox` (Android cannot use the Chromium sandbox).
-- The MCP server is pinned to `@playwright/mcp@0.0.81`, which bundles playwright-core `1.64.0-alpha-2026-09-14` — the first build whose `registryDirectory` fix allows Android. Two remaining platform checks are bypassed with environment variables: `PWMCP_PROFILES_DIR_FOR_TEST` (a direct `defaultCacheDirectory()` call in `createUserDataDir`) and `PWTEST_SERVER_REGISTRY` (a direct `registryDirectory2()` call in the server registry). `PLAYWRIGHT_BROWSERS_PATH=0` keeps the server from looking for downloaded browser binaries.
+- The MCP server is pinned to `@playwright/mcp@0.0.81`, which bundles playwright-core `1.64.0-alpha-2026-09-14` — the first build whose `registryDirectory` fix allows Android. Three remaining platform checks are bypassed with environment variables: `PWMCP_PROFILES_DIR_FOR_TEST` (a direct `defaultCacheDirectory()` call in `createUserDataDir`), `PWTEST_SERVER_REGISTRY` (a direct `registryDirectory2()` call in the server registry), and `PWTEST_DAEMON_SESSION_DIR` (a direct `computeBaseDaemonDir()` call reached via `createClientInfo()`). `PLAYWRIGHT_BROWSERS_PATH=0` keeps the server from looking for downloaded browser binaries.
 
 Requirements: an aarch64 device. Run the same one-shot command as above.
 

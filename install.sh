@@ -248,7 +248,9 @@ if [ "$TERMUX" = "1" ]; then
     fi
   fi
   log "Pre-warming the bun cache with @playwright/mcp@$MCP_VERSION..."
-  bunx --bun "@playwright/mcp@$MCP_VERSION" --help >/dev/null 2>&1 || true
+  if ! bunx --bun "@playwright/mcp@$MCP_VERSION" --help >/dev/null 2>&1; then
+    warn "@playwright/mcp@$MCP_VERSION failed to start; the MCP server may fail at runtime."
+  fi
 else
   bun install
 fi
@@ -274,7 +276,7 @@ if [ "$TERMUX" = "1" ]; then
   fi
 else
   log "Installing Playwright chromium browser..."
-  bunx "@playwright/mcp@$MCP_VERSION" install-browser chromium
+  bunx @playwright/mcp install-browser chromium
 fi
 
 # 9. System dependencies for the chromium browser. The MCP server launches
@@ -355,12 +357,15 @@ fi
 #     bun (bunx --bun) against the native chromium binary, pinned to
 #     @playwright/mcp@$MCP_VERSION. That version bundles playwright-core
 #     1.64.0-alpha-2026-09-14, whose registryDirectory fix allows Android;
-#     the two remaining platform checks are bypassed with environment
+#     the three remaining platform checks are bypassed with environment
 #     variables:
 #       - PWMCP_PROFILES_DIR_FOR_TEST: createUserDataDir calls
 #         defaultCacheDirectory() directly (coreBundle.js:74015);
 #       - PWTEST_SERVER_REGISTRY: serverRegistry._browsersDir() calls
-#         registryDirectory2() directly (coreBundle.js:52735).
+#         registryDirectory2() directly (coreBundle.js:52735);
+#       - PWTEST_DAEMON_SESSION_DIR: createClientInfo() -> daemonProfilesDir()
+#         -> baseDaemonDir() -> computeBaseDaemonDir() throws for android
+#         (coreBundle.js:71413).
 #     Idempotent: the sed replacement rewrites the command to the same value
 #     once done, and the environment block is only rewritten when the
 #     PWMCP_PROFILES_DIR_FOR_TEST marker is missing.
@@ -373,7 +378,7 @@ if [ "$TERMUX" = "1" ]; then
     # Assumes a single environment block in the file, which holds for the
     # config this repo ships.
     sed -i '/"environment": {/,/},/d' opencode.jsonc
-    sed -i '/"command": \["bunx"/a\      "environment": {\n        "PLAYWRIGHT_BROWSERS_PATH": "0",\n        "PWMCP_PROFILES_DIR_FOR_TEST": "'"$HOME"'/.cache/ms-playwright-mcp",\n        "PWTEST_SERVER_REGISTRY": "'"$HOME"'/.cache/ms-playwright/b"\n      },' opencode.jsonc
+    sed -i '/"command": \["bunx"/a\      "environment": {\n        "PLAYWRIGHT_BROWSERS_PATH": "0",\n        "PWMCP_PROFILES_DIR_FOR_TEST": "'"$HOME"'/.cache/ms-playwright-mcp",\n        "PWTEST_SERVER_REGISTRY": "'"$HOME"'/.cache/ms-playwright/b",\n        "PWTEST_DAEMON_SESSION_DIR": "'"$HOME"'/.cache/ms-playwright/daemon"\n      },' opencode.jsonc
   fi
 fi
 
