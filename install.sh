@@ -3,22 +3,29 @@
 # install.sh — one-shot installer for the personal OpenCode configuration.
 #
 # The repo is public, so no GitHub authentication is needed. It installs
-# prerequisites (bun, opencode,
-# Playwright chromium), clones or updates the config repo into
-# ~/.config/opencode, recreates the gitignored package.json, installs
-# dependencies, and fixes absolute paths for the current user. Safe to
-# re-run: existing steps are skipped or updated.
+# prerequisites (bun, opencode, Playwright chromium), clones or updates the
+# config repo into ~/.config/opencode, recreates the gitignored package.json,
+# installs dependencies, and fixes absolute paths for the current user. Safe
+# to re-run: existing steps are skipped or updated.
 #
 # On native Termux (Android, no proot) the script takes a different path:
 # bun comes from the official Termux package, opencode from the
 # bd-loser/opencode-bionic aarch64 build (falling back to
 # guysoft/opencode-termux), and chromium is installed from the Termux
-# x11-repo and launched via --executable-path with --no-sandbox.
+# x11-repo and launched via --executable-path with --no-sandbox. The MCP
+# server is pinned to @playwright/mcp@0.0.81, whose bundled playwright-core
+# alpha carries the Android fix; three environment variables bypass the
+# remaining platform checks (see step 12).
 
 set -euo pipefail
 
 REPO_URL="https://github.com/azrialwork/opencode-settings.git"
 CONFIG_DIR="${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}"
+
+# MCP server version pinned on Termux. 0.0.81 bundles playwright-core
+# 1.64.0-alpha-2026-09-14, the first build whose registryDirectory fix
+# allows Android; newer versions may work, but this one is verified.
+MCP_VERSION="0.0.81"
 
 # Repo directory when run as a file; empty when piped to bash via stdin.
 SCRIPT_DIR=""
@@ -62,9 +69,7 @@ fi
 
 # 2. bun — runtime used by the Playwright MCP command and dependency installs.
 #    On Termux it comes from the official Termux package (pkg install bun);
-#    elsewhere from the bun.sh installer. The Android build reports
-#    process.platform="android", which playwright-core rejects, so the
-#    coreBundle.js patch in step 7 makes android behave like linux.
+#    elsewhere from the bun.sh installer.
 if [ "$TERMUX" = "1" ]; then
   if ! command -v bun >/dev/null 2>&1; then
     log "Installing bun (Termux package)..."
@@ -231,9 +236,10 @@ fi
 
 # 7. Install dependencies (plugin SDK) with bun on every platform, including
 #    Termux. The allowScripts field in package.json is npm-specific and
-#    ignored by bun; it is harmless to keep.
+#    ignored by bun; it is harmless to keep. On Termux the bun cache is
+#    pre-warmed with the pinned MCP server so the first launch is fast.
+log "Installing dependencies (bun install)..."
 if [ "$TERMUX" = "1" ]; then
-  log "Installing dependencies (bun install)..."
   if ! bun install; then
     warn "bun install failed; retrying with BUN_OPTIONS=--backend=copyfile..."
     if ! BUN_OPTIONS="--backend=copyfile" bun install; then
@@ -241,29 +247,9 @@ if [ "$TERMUX" = "1" ]; then
       exit 1
     fi
   fi
-  # playwright-core rejects Android with "Unsupported platform: android":
-  # bun on Termux reports process.platform="android" (the Android build),
-  # and playwright-core only knows linux/darwin/win32. Pre-warm the bun
-  # cache (the MCP server runs via `bunx --bun @playwright/mcp`), then
-  # patch coreBundle.js so android is treated as linux — the same approach
-  # Termux playwright distributions use. Idempotent: already-patched files
-  # no longer match the sed patterns.
-  log "Patching playwright-core for Termux (android treated as linux)..."
-  bunx --bun @playwright/mcp@0.0.78 --help >/dev/null 2>&1 || true
-  PW_CORES="$(find "$HOME/.bun/install/cache" -path '*/playwright-core/lib/coreBundle.js' 2>/dev/null || true)"
-  if [ -n "$PW_CORES" ]; then
-    for f in $PW_CORES; do
-      sed -i \
-        -e 's/process\.platform === "linux"/process.platform === "linux" || process.platform === "android"/g' \
-        -e 's/process\.platform !== "linux"/process.platform !== "linux" \&\& process.platform !== "android"/g' \
-        "$f"
-    done
-    log "Patched playwright-core in the bun cache."
-  else
-    warn "playwright-core not found in the bun cache; the MCP server may fail with 'Unsupported platform: android'."
-  fi
+  log "Pre-warming the bun cache with @playwright/mcp@$MCP_VERSION..."
+  bunx --bun "@playwright/mcp@$MCP_VERSION" --help >/dev/null 2>&1 || true
 else
-  log "Installing dependencies (bun install)..."
   bun install
 fi
 
@@ -288,13 +274,13 @@ if [ "$TERMUX" = "1" ]; then
   fi
 else
   log "Installing Playwright chromium browser..."
-  bunx @playwright/mcp install-browser chromium
+  bunx "@playwright/mcp@$MCP_VERSION" install-browser chromium
 fi
 
-# 8b. System dependencies for the chromium browser. The MCP server launches
-#     a real chromium binary, which needs shared libraries that a minimal
-#     container does not ship. Playwright's own `install-deps` only covers
-#     Debian/Ubuntu and Alpine, so the lists are maintained here per distro.
+# 9. System dependencies for the chromium browser. The MCP server launches
+#    a real chromium binary, which needs shared libraries that a minimal
+#    container does not ship. Playwright's own `install-deps` only covers
+#    Debian/Ubuntu and Alpine, so the lists are maintained here per distro.
 install_playwright_system_deps() {
   if command -v pacman >/dev/null 2>&1; then
     log "Installing chromium system dependencies (pacman)..."
@@ -337,7 +323,7 @@ if [ "$TERMUX" != "1" ]; then
   install_playwright_system_deps
 fi
 
-# 8c. Verify the chromium binary resolves every shared library it needs.
+# 10. Verify the chromium binary resolves every shared library it needs.
 #     On Termux the binary is the native chromium-browser from the x11-repo
 #     and ldd is not part of the default install, so this check is skipped.
 if [ "$TERMUX" = "1" ]; then
@@ -354,7 +340,7 @@ else
   fi
 fi
 
-# 8d. Smoke test: launch the exact chromium binary the MCP server uses.
+# 11. Smoke test: launch the exact chromium binary the MCP server uses.
 if [ -n "$CHROME_BIN" ] && [ -x "$CHROME_BIN" ]; then
   log "Smoke-testing chromium launch..."
   if "$CHROME_BIN" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
@@ -365,25 +351,39 @@ if [ -n "$CHROME_BIN" ] && [ -x "$CHROME_BIN" ]; then
   fi
 fi
 
-# 9a. On Termux the repo's bun-based MCP command is rewritten to run under
-#     bun (bunx --bun) against the native chromium binary. Idempotent: the
-#     sed replacement rewrites the command to the same value once done, and
-#     the environment block is only appended when missing.
+# 12. On Termux the repo's bun-based MCP command is rewritten to run under
+#     bun (bunx --bun) against the native chromium binary, pinned to
+#     @playwright/mcp@$MCP_VERSION. That version bundles playwright-core
+#     1.64.0-alpha-2026-09-14, whose registryDirectory fix allows Android;
+#     the two remaining platform checks are bypassed with environment
+#     variables:
+#       - PWMCP_PROFILES_DIR_FOR_TEST: createUserDataDir calls
+#         defaultCacheDirectory() directly (coreBundle.js:74015);
+#       - PWTEST_SERVER_REGISTRY: serverRegistry._browsersDir() calls
+#         registryDirectory2() directly (coreBundle.js:52735).
+#     Idempotent: the sed replacement rewrites the command to the same value
+#     once done, and the environment block is only rewritten when the
+#     PWMCP_PROFILES_DIR_FOR_TEST marker is missing.
 if [ "$TERMUX" = "1" ]; then
   log "Rewriting mcp.playwright command for Termux (bunx --bun + native chromium)..."
-  sed -i "s|^\(\s*\)\"command\": \[\".*@playwright/mcp.*|\1\"command\": [\"bunx\", \"--bun\", \"@playwright/mcp@0.0.78\", \"--headless\", \"--no-sandbox\", \"--executable-path\", \"$PREFIX/bin/chromium-browser\", \"--config\", \"$CONFIG_DIR/playwright-mcp.json\"],|" opencode.jsonc
-  if ! grep -q 'PLAYWRIGHT_BROWSERS_PATH' opencode.jsonc; then
-    sed -i '/"command": \["bunx"/a\      "environment": {\n        "PLAYWRIGHT_BROWSERS_PATH": "0"\n      },' opencode.jsonc
+  sed -i "s|^\(\s*\)\"command\": \[\".*@playwright/mcp.*|\1\"command\": [\"bunx\", \"--bun\", \"@playwright/mcp@$MCP_VERSION\", \"--headless\", \"--no-sandbox\", \"--executable-path\", \"$PREFIX/bin/chromium-browser\", \"--config\", \"$CONFIG_DIR/playwright-mcp.json\"],|" opencode.jsonc
+  if ! grep -q 'PWMCP_PROFILES_DIR_FOR_TEST' opencode.jsonc; then
+    # Drop any existing environment block (upgrade from an older installer
+    # that only set PLAYWRIGHT_BROWSERS_PATH), then append the full block.
+    # Assumes a single environment block in the file, which holds for the
+    # config this repo ships.
+    sed -i '/"environment": {/,/},/d' opencode.jsonc
+    sed -i '/"command": \["bunx"/a\      "environment": {\n        "PLAYWRIGHT_BROWSERS_PATH": "0",\n        "PWMCP_PROFILES_DIR_FOR_TEST": "'"$HOME"'/.cache/ms-playwright-mcp",\n        "PWTEST_SERVER_REGISTRY": "'"$HOME"'/.cache/ms-playwright/b"\n      },' opencode.jsonc
   fi
 fi
 
-# 9b. Fix absolute paths in opencode.jsonc for the current user.
+# 13. Fix absolute paths in opencode.jsonc for the current user.
 if grep -q "/home/azrial" opencode.jsonc; then
   log "Adjusting absolute paths in opencode.jsonc to $HOME..."
   sed -i "s|/home/azrial|$HOME|g" opencode.jsonc
 fi
 
-# 10. Done.
+# 14. Done.
 log "Installation complete."
 echo
 echo "Next step: quit and restart opencode so the new config is loaded."
