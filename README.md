@@ -19,15 +19,17 @@ Personal OpenCode configuration and instructions: global config, system prompt, 
 |---|---|---|
 | `opencode` | latest | The application itself. |
 | `gh` (GitHub CLI) | latest | Required to fetch the config from the private repo. |
-| `bun` | latest | Runtime used by the MCP command (`bun x @playwright/mcp@latest`) and dependency installs. |
+| `bun` | latest | Runtime used by the MCP command (`bun x @playwright/mcp@latest`) and dependency installs. Replaced by `nodejs-lts` on Termux. |
 | `@opencode-ai/plugin` | `1.18.31` | Plugin SDK; `plugins/system-trim.ts` imports its `Plugin` type. |
-| `playwright` | latest (fetched on demand) | CLI used to install the browser binaries (`bunx playwright install chromium`). |
-| `@playwright/mcp` | latest (fetched on demand) | MCP server for browser automation; run via `bun x`, no install needed. |
-| Playwright browser binaries | latest | Chromium headless shell required by `@playwright/mcp`; installed with `bunx playwright install chromium`. |
+| `playwright` | latest (fetched on demand) | CLI used to install the browser binaries (`bunx playwright install chromium`). Not used on Termux. |
+| `@playwright/mcp` | latest (fetched on demand) | MCP server for browser automation; run via `bun x` (via `npx -y @playwright/mcp@0.0.78` on Termux), no install needed. |
+| Playwright browser binaries | latest | Chromium headless shell required by `@playwright/mcp`; installed with `bunx playwright install chromium`. On Termux, chromium comes from the `x11-repo` instead. |
 
 Note: `package.json`, lockfiles, and `node_modules/` are excluded from this repo via `.gitignore`, so the dependency manifest is not versioned. Recreate it locally as shown below.
 
 Note (proot): bun's default install backend is `hardlink`. proot's link2symlink converts hardlinks into `.l2s` symlinks, which breaks `bunx` and `bun install`. `install.sh` sets `BUN_OPTIONS="--backend=copyfile"` in `~/.bashrc` to force bun to copy files instead.
+
+Note (Termux): on native Termux (Android, no proot) `install.sh` detects the environment and takes a different path: `nodejs-lts` + `npx` replace bun, opencode is installed from the `guysoft/opencode-termux` aarch64 build (upstream ships no Android binary), and chromium comes from the Termux `x11-repo`, launched via `--executable-path` with `--no-sandbox` (the Android sandbox is unusable).
 
 ## Applying the config
 
@@ -40,7 +42,7 @@ The repo is private, so fetching the installer requires the GitHub CLI (`gh`). I
 gh auth login
 ```
 
-`install.sh` installs everything in one run: prerequisites (bun, opencode), the config repo, dependencies, and the Playwright browser. It is idempotent and safe to re-run.
+`install.sh` installs everything in one run: prerequisites (bun or nodejs, opencode), the config repo, dependencies, and the browser (Playwright chromium, or the Termux `x11-repo` chromium on native Termux). It is idempotent and safe to re-run.
 
 ```bash
 gh api repos/azrialwork/opencode-settings/contents/install.sh -q '.content' | base64 -d | bash
@@ -56,15 +58,28 @@ bash install.sh
 What the script does:
 
 1. Checks that `gh` is installed and authenticated (required for the private repo).
-2. Installs `bun` and `opencode` if missing.
-3. Adds `BUN_OPTIONS="--backend=copyfile"` to `~/.bashrc` (required under proot; see note above).
+2. Installs `bun` and `opencode` if missing (on Termux: `nodejs-lts` and the `guysoft/opencode-termux` aarch64 build).
+3. Adds `BUN_OPTIONS="--backend=copyfile"` to `~/.bashrc` (required under proot; skipped on Termux).
 4. Clones the repo into `~/.config/opencode/` via `gh repo clone` (or pulls updates; backs up an existing non-repo directory first).
-5. Recreates the gitignored `package.json` and runs `bun install`.
-6. Installs the Playwright chromium browser.
-7. Rewrites absolute paths in `opencode.jsonc` to your `$HOME`.
+5. Recreates the gitignored `package.json` and runs `bun install` (`npm install` on Termux).
+6. Installs the Playwright chromium browser (`pkg install chromium` from the Termux `x11-repo` on Termux).
+7. Rewrites absolute paths in `opencode.jsonc` to your `$HOME` (on Termux it also rewrites the `mcp.playwright` command to `npx @playwright/mcp` with `--executable-path`).
 8. Prints a reminder to restart opencode.
 
+### Termux (native, no proot)
+
+On native Termux the script detects the environment (`$PREFIX` set and `uname -o` = `Android`) and installs a fully native stack — no proot required:
+
+- `nodejs-lts` replaces bun; the MCP server runs via `npx -y @playwright/mcp@0.0.78`.
+- opencode comes from the `guysoft/opencode-termux` aarch64 build (upstream ships no Android binary and the npm postinstall fails on Termux).
+- chromium is installed from the Termux `x11-repo` and launched with `--executable-path $PREFIX/bin/chromium-browser --no-sandbox` (Android cannot use the Chromium sandbox).
+- `PLAYWRIGHT_BROWSERS_PATH=0` is set for the MCP server so it never looks for downloaded browser binaries.
+
+Requirements: an aarch64 device and `gh auth login` first. Run the same one-shot command as above.
+
 ### Manual install (step by step)
+
+The manual steps assume a normal Linux environment; on Termux use the one-shot installer above.
 
 1. Install prerequisites:
 
