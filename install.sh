@@ -119,7 +119,13 @@ if [ "$TERMUX" = "1" ]; then
     chmod +x "$PREFIX/bin/opencode"
     mv "$tmpdir/opencode/opencode.bin" "$PREFIX/libexec/opencode/opencode.bin"
     chmod +x "$PREFIX/libexec/opencode/opencode.bin"
-    for lib in libtagfix.so libc++_shared.so libopentui.so librust_pty_arm64.so; do
+    # Copy the shared libraries the opencode binary needs. libc++_shared.so
+    # is deliberately NOT copied: the release bundles its own copy built
+    # against an older NDK, and overwriting $PREFIX/lib/libc++_shared.so
+    # (owned by the Termux libc++ package) drops symbols that libplacebo.so
+    # needs, breaking ffmpeg/pipewire/chromium with "cannot locate symbol"
+    # link errors. The opencode binaries only need libc/libdl/libm anyway.
+    for lib in libtagfix.so libopentui.so librust_pty_arm64.so; do
       if [ -f "$tmpdir/opencode/$lib" ]; then
         mv "$tmpdir/opencode/$lib" "$PREFIX/lib/"
       else
@@ -204,6 +210,17 @@ if [ "$TERMUX" = "1" ]; then
   log "Installing chromium from the Termux x11-repo..."
   pkg install -y x11-repo
   pkg install -y chromium
+  # ffmpeg is a chromium dependency whose post-install runs the ffmpeg
+  # binary; a broken libc++_shared.so (e.g. overwritten by a release copy)
+  # makes it fail with "cannot locate symbol". Smoke-test it as a cheap
+  # indicator that the C++ runtime is intact.
+  if command -v ffmpeg >/dev/null 2>&1; then
+    if ffmpeg -version >/dev/null 2>&1; then
+      log "ffmpeg OK."
+    else
+      warn "ffmpeg is broken; libc++_shared.so may be corrupted. Run: pkg reinstall -y libc++ && pkg install -f -y"
+    fi
+  fi
 else
   log "Installing Playwright chromium browser..."
   bunx @playwright/mcp install-browser chromium
