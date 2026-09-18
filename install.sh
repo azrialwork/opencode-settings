@@ -37,9 +37,13 @@ warn() { printf '\033[1;33m[install]\033[0m %s\n' "$*"; }
 
 # 1. Prerequisites: curl, git, and gh (GitHub CLI) are required. On Termux
 #    they are installed via pkg, together with nodejs (replaces bun), unzip
-#    (opencode release), and ripgrep (opencode runtime dependency).
+#    (opencode release), and ripgrep (opencode runtime dependency). pkg
+#    upgrade runs first because Termux requires a consistent package set:
+#    a mismatched one breaks the chromium install with "cannot locate
+#    symbol" link errors (e.g. ffmpeg vs libplacebo).
 if [ "$TERMUX" = "1" ]; then
-  log "Termux detected; installing prerequisites via pkg..."
+  log "Termux detected; upgrading packages and installing prerequisites via pkg..."
+  pkg upgrade -y
   pkg install -y git curl gh nodejs-lts unzip ripgrep
 else
   for cmd in curl git gh; do

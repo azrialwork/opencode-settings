@@ -69,6 +69,7 @@ What the script does:
 
 On native Termux the script detects the environment (`$PREFIX` set and `uname -o` = `Android`) and installs a fully native stack — no proot required:
 
+- `pkg upgrade` runs first so the package set is consistent; a mismatched set (e.g. ffmpeg vs libplacebo) breaks the chromium install with "cannot locate symbol" link errors.
 - `nodejs-lts` replaces bun; the MCP server runs via `npx -y @playwright/mcp@0.0.78`.
 - opencode comes from the `guysoft/opencode-termux` aarch64 build (upstream ships no Android binary and the npm postinstall fails on Termux).
 - chromium is installed from the Termux `x11-repo` and launched with `--executable-path $PREFIX/bin/chromium-browser --no-sandbox` (Android cannot use the Chromium sandbox).
