@@ -3,8 +3,8 @@
 # install.sh — one-shot installer for the personal OpenCode configuration.
 #
 # The repo is private, so this script requires the GitHub CLI (gh) to be
-# installed and authenticated. It installs prerequisites (nodejs, npm,
-# opencode, Playwright chromium), clones or updates the config repo into
+# installed and authenticated. It installs prerequisites (bun, opencode,
+# Playwright chromium), clones or updates the config repo into
 # ~/.config/opencode, recreates the gitignored package.json, installs
 # dependencies, and fixes absolute paths for the current user. Safe to
 # re-run: existing steps are skipped or updated.
@@ -37,21 +37,27 @@ if ! gh auth status >/dev/null 2>&1; then
   exit 1
 fi
 
-# 2. nodejs + npm — runtime used by the Playwright MCP command and dependency installs.
-if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-  log "Installing nodejs and npm..."
-  if command -v apt-get >/dev/null 2>&1; then
-    apt-get update -qq
-    apt-get install -y -qq nodejs npm
-  else
-    echo "No supported package manager found; install nodejs and npm manually." >&2
-    exit 1
-  fi
+# 2. bun — runtime used by the Playwright MCP command and dependency installs.
+if ! command -v bun >/dev/null 2>&1; then
+  log "Installing bun..."
+  curl -fsSL https://bun.sh/install | bash
+  export PATH="$HOME/.bun/bin:$PATH"
 fi
-command -v node >/dev/null 2>&1 || { echo "node install failed" >&2; exit 1; }
-command -v npm >/dev/null 2>&1 || { echo "npm install failed" >&2; exit 1; }
+command -v bun >/dev/null 2>&1 || { echo "bun install failed" >&2; exit 1; }
 
-# 3. opencode — the application itself.
+# 3. BUN_OPTIONS — proot's link2symlink converts hardlinks to .l2s symlinks,
+#    which breaks bunx and bun install. Force bun to copy files instead.
+if ! grep -q 'BUN_OPTIONS' "$HOME/.bashrc" 2>/dev/null; then
+  log "Adding BUN_OPTIONS=--backend=copyfile to ~/.bashrc..."
+  cat >> "$HOME/.bashrc" <<'EOF'
+
+# bun: proot link2symlink breaks hardlinks; force copyfile backend.
+export BUN_OPTIONS="--backend=copyfile"
+EOF
+fi
+export BUN_OPTIONS="--backend=copyfile"
+
+# 4. opencode — the application itself.
 if ! command -v opencode >/dev/null 2>&1; then
   log "Installing opencode..."
   curl -fsSL https://opencode.ai/install | bash
@@ -59,7 +65,7 @@ if ! command -v opencode >/dev/null 2>&1; then
 fi
 command -v opencode >/dev/null 2>&1 || { echo "opencode install failed" >&2; exit 1; }
 
-# 4. Config directory: clone, update, or back up and replace.
+# 5. Config directory: clone, update, or back up and replace.
 if [ -n "$SCRIPT_DIR" ] && [ "$SCRIPT_DIR" = "$CONFIG_DIR" ]; then
   log "Running from inside the config repo; skipping clone."
   cd "$CONFIG_DIR"
@@ -85,37 +91,30 @@ else
 fi
 cd "$CONFIG_DIR"
 
-# 5. package.json is gitignored, so recreate it when missing.
+# 6. package.json is gitignored, so recreate it when missing.
 if [ ! -f package.json ]; then
   log "Creating package.json..."
   cat > package.json <<'EOF'
 {
   "dependencies": {
-    "@opencode-ai/plugin": "1.18.31",
-    "playwright": "^1.63.0"
+    "@opencode-ai/plugin": "1.18.31"
   }
 }
 EOF
 fi
 
-# 6. Install dependencies (plugin SDK and playwright).
-log "Installing dependencies (npm install)..."
-npm install
+# 7. Install dependencies (plugin SDK).
+log "Installing dependencies (bun install)..."
+bun install
 
-# 7. Playwright browser used by the MCP server.
+# 8. Playwright browser used by the MCP server.
 log "Installing Playwright chromium browser..."
-node node_modules/playwright/cli.js install chromium
+bunx playwright install chromium
 
-# 8. Fix absolute paths in opencode.jsonc for the current user.
+# 9. Fix absolute paths in opencode.jsonc for the current user.
 if grep -q "/home/azrial" opencode.jsonc; then
   log "Adjusting absolute paths in opencode.jsonc to $HOME..."
   sed -i "s|/home/azrial|$HOME|g" opencode.jsonc
-fi
-
-# 9. Replace bun with npx in the MCP command (bunx is incompatible with proot).
-if grep -q '"bun", "x"' opencode.jsonc; then
-  log "Replacing bun with npx in the MCP command..."
-  sed -i 's|"bun", "x"|"npx", "-y"|g' opencode.jsonc
 fi
 
 # 10. Done.

@@ -19,13 +19,15 @@ Personal OpenCode configuration and instructions: global config, system prompt, 
 |---|---|---|
 | `opencode` | latest | The application itself. |
 | `gh` (GitHub CLI) | latest | Required to fetch the config from the private repo. |
-| `nodejs` + `npm` | latest | Runtime used by the MCP command (`npx @playwright/mcp@latest`) and dependency installs. |
+| `bun` | latest | Runtime used by the MCP command (`bun x @playwright/mcp@latest`) and dependency installs. |
 | `@opencode-ai/plugin` | `1.18.31` | Plugin SDK; `plugins/system-trim.ts` imports its `Plugin` type. |
-| `playwright` | `^1.63.0` | CLI used to install the browser binaries (`node node_modules/playwright/cli.js install chromium`). |
-| `@playwright/mcp` | latest (fetched on demand) | MCP server for browser automation; run via `npx -y`, no install needed. |
-| Playwright browser binaries | latest | Chromium headless shell required by `@playwright/mcp`; installed with `node node_modules/playwright/cli.js install chromium`. |
+| `playwright` | latest (fetched on demand) | CLI used to install the browser binaries (`bunx playwright install chromium`). |
+| `@playwright/mcp` | latest (fetched on demand) | MCP server for browser automation; run via `bun x`, no install needed. |
+| Playwright browser binaries | latest | Chromium headless shell required by `@playwright/mcp`; installed with `bunx playwright install chromium`. |
 
 Note: `package.json`, lockfiles, and `node_modules/` are excluded from this repo via `.gitignore`, so the dependency manifest is not versioned. Recreate it locally as shown below.
+
+Note (proot): bun's default install backend is `hardlink`. proot's link2symlink converts hardlinks into `.l2s` symlinks, which breaks `bunx` and `bun install`. `install.sh` sets `BUN_OPTIONS="--backend=copyfile"` in `~/.bashrc` to force bun to copy files instead.
 
 ## Applying the config
 
@@ -38,7 +40,7 @@ The repo is private, so fetching the installer requires the GitHub CLI (`gh`). I
 gh auth login
 ```
 
-`install.sh` installs everything in one run: prerequisites (nodejs, npm, opencode), the config repo, dependencies, and the Playwright browser. It is idempotent and safe to re-run.
+`install.sh` installs everything in one run: prerequisites (bun, opencode), the config repo, dependencies, and the Playwright browser. It is idempotent and safe to re-run.
 
 ```bash
 gh api repos/azrialwork/opencode-settings/contents/install.sh -q '.content' | base64 -d | bash
@@ -54,12 +56,12 @@ bash install.sh
 What the script does:
 
 1. Checks that `gh` is installed and authenticated (required for the private repo).
-2. Installs `nodejs`, `npm`, and `opencode` if missing.
-3. Clones the repo into `~/.config/opencode/` via `gh repo clone` (or pulls updates; backs up an existing non-repo directory first).
-4. Recreates the gitignored `package.json` and runs `npm install`.
-5. Installs the Playwright chromium browser.
-6. Rewrites absolute paths in `opencode.jsonc` to your `$HOME`.
-7. Replaces `bun x` with `npx -y` in the MCP command (bunx is incompatible with proot).
+2. Installs `bun` and `opencode` if missing.
+3. Adds `BUN_OPTIONS="--backend=copyfile"` to `~/.bashrc` (required under proot; see note above).
+4. Clones the repo into `~/.config/opencode/` via `gh repo clone` (or pulls updates; backs up an existing non-repo directory first).
+5. Recreates the gitignored `package.json` and runs `bun install`.
+6. Installs the Playwright chromium browser.
+7. Rewrites absolute paths in `opencode.jsonc` to your `$HOME`.
 8. Prints a reminder to restart opencode.
 
 ### Manual install (step by step)
@@ -68,8 +70,11 @@ What the script does:
 
    ```bash
    # opencode (see https://opencode.ai/docs/ for install options)
-   # nodejs + npm (Debian/Ubuntu)
-   apt-get update && apt-get install -y nodejs npm
+   # bun (see https://bun.sh/docs/installation)
+   curl -fsSL https://bun.sh/install | bash
+   # required under proot: force bun to copy files instead of hardlinking
+   echo 'export BUN_OPTIONS="--backend=copyfile"' >> ~/.bashrc
+   export BUN_OPTIONS="--backend=copyfile"
    ```
 
 2. Clone or copy this repo to the global config directory (the repo is private, so use `gh`):
@@ -87,18 +92,17 @@ What the script does:
    cat > package.json <<'EOF'
    {
      "dependencies": {
-       "@opencode-ai/plugin": "1.18.31",
-       "playwright": "^1.63.0"
+       "@opencode-ai/plugin": "1.18.31"
      }
    }
    EOF
-   npm install
+   bun install
    ```
 
 4. Install the Playwright browser used by the MCP server:
 
    ```bash
-   node node_modules/playwright/cli.js install chromium
+   bunx playwright install chromium
    ```
 
 5. Adjust absolute paths in `opencode.jsonc` if your home directory differs:
