@@ -241,6 +241,27 @@ if [ "$TERMUX" = "1" ]; then
   npm install
   npm install-scripts approve --all || true
   npm install
+  # playwright-core rejects Android with "Unsupported platform: android":
+  # node on Termux is built with --dest-os=android, so process.platform is
+  # "android", and playwright-core only knows linux/darwin/win32. Pre-warm
+  # the npx cache (the MCP server runs via `npx -y @playwright/mcp`), then
+  # patch coreBundle.js so android is treated as linux — the same approach
+  # Termux playwright distributions use. Idempotent: already-patched files
+  # no longer match the sed patterns.
+  log "Patching playwright-core for Termux (android treated as linux)..."
+  npx -y @playwright/mcp@0.0.78 --help >/dev/null 2>&1 || true
+  PW_CORES="$(find "$HOME/.npm/_npx" -path '*/playwright-core/lib/coreBundle.js' 2>/dev/null || true)"
+  if [ -n "$PW_CORES" ]; then
+    for f in $PW_CORES; do
+      sed -i \
+        -e 's/process\.platform === "linux"/process.platform === "linux" || process.platform === "android"/g' \
+        -e 's/process\.platform !== "linux"/process.platform !== "linux" \&\& process.platform !== "android"/g' \
+        "$f"
+    done
+    log "Patched playwright-core in the npx cache."
+  else
+    warn "playwright-core not found in npx cache; the MCP server may fail with 'Unsupported platform: android'."
+  fi
 else
   log "Installing dependencies (bun install)..."
   bun install
