@@ -107,9 +107,12 @@ fi
 log "Installing dependencies (bun install)..."
 bun install
 
-# 8. Playwright browser used by the MCP server.
+# 8. Playwright browser used by the MCP server. Install through the MCP
+#    package itself so the chromium revision always matches the
+#    playwright-core bundled with @playwright/mcp; a bare `bunx playwright
+#    install` can drift to a different revision and break the MCP server.
 log "Installing Playwright chromium browser..."
-bunx playwright install chromium
+bunx @playwright/mcp install-browser chromium
 
 # 9. Fix absolute paths in opencode.jsonc for the current user.
 if grep -q "/home/azrial" opencode.jsonc; then
