@@ -40,10 +40,15 @@ warn() { printf '\033[1;33m[install]\033[0m %s\n' "$*"; }
 #    (opencode release), and ripgrep (opencode runtime dependency). pkg
 #    upgrade runs first because Termux requires a consistent package set:
 #    a mismatched one breaks the chromium install with "cannot locate
-#    symbol" link errors (e.g. ffmpeg vs libplacebo).
+#    symbol" link errors (e.g. ffmpeg vs libplacebo). An interrupted update
+#    can also corrupt libc++_shared.so, which `pkg upgrade` does not repair
+#    (packages are already "up to date"); reinstalling libc++ and fixing
+#    broken packages resolves that state.
 if [ "$TERMUX" = "1" ]; then
   log "Termux detected; upgrading packages and installing prerequisites via pkg..."
-  pkg upgrade -y
+  pkg upgrade -y || true
+  pkg reinstall -y libc++
+  pkg install -f -y
   pkg install -y git curl gh nodejs-lts unzip ripgrep
 else
   for cmd in curl git gh; do
