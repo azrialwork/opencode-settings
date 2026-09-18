@@ -114,6 +114,69 @@ bun install
 log "Installing Playwright chromium browser..."
 bunx @playwright/mcp install-browser chromium
 
+# 8b. System dependencies for the chromium browser. The MCP server launches
+#     a real chromium binary, which needs shared libraries that a minimal
+#     container does not ship. Playwright's own `install-deps` only covers
+#     Debian/Ubuntu and Alpine, so the lists are maintained here per distro.
+install_playwright_system_deps() {
+  if command -v pacman >/dev/null 2>&1; then
+    log "Installing chromium system dependencies (pacman)..."
+    pacman -S --needed --noconfirm \
+      alsa-lib atk at-spi2-atk at-spi2-core cairo dbus expat fontconfig \
+      freetype2 gdk-pixbuf2 glib2 gtk3 libcups libdrm libx11 libxcb \
+      libxcomposite libxdamage libxext libxfixes libxkbcommon libxrandr \
+      libxshmfence mesa nss nspr pango wayland xcb-util-cursor \
+      xcb-util-image xcb-util-keysyms xcb-util-renderutil xcb-util-wm \
+      xorg-xrandr
+  elif command -v apt-get >/dev/null 2>&1; then
+    log "Installing chromium system dependencies (apt-get)..."
+    apt-get update
+    apt-get install -y \
+      libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+      libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+      libgbm1 libasound2 libpango-1.0-0 libcairo2 libx11-6 libxcb1 \
+      libxext6 libxi6 libxtst6 libxss1 fonts-liberation
+  elif command -v dnf >/dev/null 2>&1; then
+    log "Installing chromium system dependencies (dnf)..."
+    dnf install -y \
+      nss nspr atk at-spi2-atk cups-libs libdrm libxkbcommon libXcomposite \
+      libXdamage libXfixes libXrandr mesa-libgbm alsa-lib pango cairo \
+      libX11 libxcb libXext libXi libXtst libXScrnSaver
+  elif command -v apk >/dev/null 2>&1; then
+    log "Installing chromium system dependencies (apk)..."
+    apk add --no-cache \
+      nss nspr atk at-spi2-atk cups-libs libdrm libxkbcommon libxcomposite \
+      libxdamage libxfixes libxrandr mesa-gbm alsa-lib pango cairo \
+      libx11 libxcb libxext
+  else
+    warn "Unknown package manager; trying 'bunx playwright install-deps chromium'..."
+    bunx playwright install-deps chromium
+  fi
+}
+install_playwright_system_deps
+
+# 8c. Verify the chromium binary resolves every shared library it needs.
+CHROME_BIN="$(find "$HOME/.cache/ms-playwright" -path '*/chrome-linux*/chrome' 2>/dev/null | head -n1 || true)"
+if [ -n "$CHROME_BIN" ] && command -v ldd >/dev/null 2>&1; then
+  missing="$(ldd "$CHROME_BIN" 2>/dev/null | awk '/not found/{print $1}' | sort -u || true)"
+  if [ -n "$missing" ]; then
+    warn "Chromium still missing libraries: $missing"
+  else
+    log "Chromium shared libraries resolved."
+  fi
+fi
+
+# 8d. Smoke test: launch the exact chromium binary the MCP server uses.
+if [ -n "$CHROME_BIN" ]; then
+  log "Smoke-testing chromium launch..."
+  if "$CHROME_BIN" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
+      --dump-dom "data:text/html,<h1>playwright-ok</h1>" 2>/dev/null | grep -q "playwright-ok"; then
+    log "Chromium launched successfully."
+  else
+    warn "Chromium smoke test failed; the MCP server may not start."
+  fi
+fi
+
 # 9. Fix absolute paths in opencode.jsonc for the current user.
 if grep -q "/home/azrial" opencode.jsonc; then
   log "Adjusting absolute paths in opencode.jsonc to $HOME..."
