@@ -8,7 +8,6 @@ Personal OpenCode configuration and instructions: global config, system prompt, 
 |---|---|
 | `opencode.jsonc` | Global OpenCode config: instructions, agent settings, MCP servers, formatter/LSP toggles. |
 | `instructions/*.md` | The system prompt, split into 7 files (core, communication, workflow, quality, compliance, shared rules, report examples); assembled in the order listed in `opencode.jsonc`. |
-| `tests/check-prompt.mjs` | Static verification for the instruction set: `bun tests/check-prompt.mjs`; must pass 100% before committing changes. |
 | `plugins/system-trim.ts` | Plugin that trims repeated "Instructions from:" segments from the system prompt. Auto-loaded from `plugins/`. |
 | `playwright-mcp.json` | Playwright MCP browser settings (headless Chromium). |
 | `install.sh` | One-shot installer: prerequisites, config clone, dependencies, and browser setup. |
