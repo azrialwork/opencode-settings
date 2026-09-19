@@ -7,7 +7,8 @@ Personal OpenCode configuration and instructions: global config, system prompt, 
 | Path | Purpose |
 |---|---|
 | `opencode.jsonc` | Global OpenCode config: instructions, agent settings, MCP servers, formatter/LSP toggles. |
-| `instructions/SYSTEM-PROMPT.md` | The system prompt injected into every session (PROPOSE/EXECUTE consultant behavior). |
+| `instructions/*.md` | The system prompt, split into 7 files (core, communication, workflow, quality, compliance, shared rules, report examples); assembled in the order listed in `opencode.jsonc`. |
+| `tests/check-prompt.mjs` | Static verification for the instruction set: `bun tests/check-prompt.mjs`; must pass 100% before committing changes. |
 | `plugins/system-trim.ts` | Plugin that trims repeated "Instructions from:" segments from the system prompt. Auto-loaded from `plugins/`. |
 | `playwright-mcp.json` | Playwright MCP browser settings (headless Chromium). |
 | `install.sh` | One-shot installer: prerequisites, config clone, dependencies, and browser setup. |
@@ -123,7 +124,7 @@ The manual steps assume a normal Linux environment; on Termux use the one-shot i
 
 5. Adjust absolute paths in `opencode.jsonc` if your home directory differs:
 
-   - `instructions` → `~/.config/opencode/instructions/SYSTEM-PROMPT.md`
+   - `instructions` → the 7 files under `~/.config/opencode/instructions/` (SYSTEM-PROMPT.md, COMMUNICATION.md, WORKFLOW.md, QUALITY.md, COMPLIANCE.md, SHARED.md, REPORT-EXAMPLES.md)
    - `mcp.playwright.command` → the `--config` flag points at `~/.config/opencode/playwright-mcp.json`
 
 6. Restart opencode. Config is loaded once at startup and is not hot-reloaded, so a running session keeps the old config until you quit and start it again.

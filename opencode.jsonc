@@ -2,7 +2,13 @@
   "$schema": "https://opencode.ai/config.json",
 
   "instructions": [
-    "/root/.config/opencode/instructions/SYSTEM-PROMPT.md"
+    "/data/data/com.termux/files/home/.config/opencode/instructions/SYSTEM-PROMPT.md",
+    "/data/data/com.termux/files/home/.config/opencode/instructions/COMMUNICATION.md",
+    "/data/data/com.termux/files/home/.config/opencode/instructions/WORKFLOW.md",
+    "/data/data/com.termux/files/home/.config/opencode/instructions/QUALITY.md",
+    "/data/data/com.termux/files/home/.config/opencode/instructions/COMPLIANCE.md",
+    "/data/data/com.termux/files/home/.config/opencode/instructions/SHARED.md",
+    "/data/data/com.termux/files/home/.config/opencode/instructions/REPORT-EXAMPLES.md"
    ],
 
   "lsp": false,
@@ -27,7 +33,13 @@
   "mcp": {
     "playwright": {
       "type": "local",
-      "command": ["bun", "x", "@playwright/mcp@latest", "--headless", "--config", "/root/.config/opencode/playwright-mcp.json"],
+      "command": ["bunx", "--bun", "@playwright/mcp@0.0.81", "--headless", "--no-sandbox", "--executable-path", "/data/data/com.termux/files/usr/bin/chromium-browser", "--config", "/data/data/com.termux/files/home/.config/opencode/playwright-mcp.json"],
+      "environment": {
+        "PLAYWRIGHT_BROWSERS_PATH": "0",
+        "PWMCP_PROFILES_DIR_FOR_TEST": "/data/data/com.termux/files/home/.cache/ms-playwright-mcp",
+        "PWTEST_SERVER_REGISTRY": "/data/data/com.termux/files/home/.cache/ms-playwright/b",
+        "PWTEST_DAEMON_SESSION_DIR": "/data/data/com.termux/files/home/.cache/ms-playwright/daemon"
+      },
       "enabled": true
     },
     "context7": {
