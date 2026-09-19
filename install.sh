@@ -237,6 +237,33 @@ else
 fi
 command -v opencode >/dev/null 2>&1 || { echo "opencode install failed" >&2; exit 1; }
 
+# 4b. PATH for future shells. On a fresh distro (e.g. a new Arch WSL2) there
+#     is no ~/.bashrc, so the bun and opencode installers skip their PATH
+#     setup and the binaries are only reachable in the current shell. Write
+#     the exports ourselves, creating ~/.bashrc when missing; the grep checks
+#     make this idempotent across re-runs.
+if [ "$TERMUX" != "1" ]; then
+  rc="$HOME/.bashrc"
+  [ -f "$rc" ] || touch "$rc"
+  if ! grep -q 'BUN_INSTALL' "$rc" 2>/dev/null; then
+    log "Adding bun to PATH in ~/.bashrc..."
+    cat >> "$rc" <<'EOF'
+
+# bun
+export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
+export PATH="$BUN_INSTALL/bin:$PATH"
+EOF
+  fi
+  if ! grep -q '\.opencode/bin' "$rc" 2>/dev/null; then
+    log "Adding opencode to PATH in ~/.bashrc..."
+    cat >> "$rc" <<'EOF'
+
+# opencode
+export PATH="$HOME/.opencode/bin:$PATH"
+EOF
+  fi
+fi
+
 # 5. Config directory: clone, update, or back up and replace.
 if [ -n "$SCRIPT_DIR" ] && [ "$SCRIPT_DIR" = "$CONFIG_DIR" ]; then
   log "Running from inside the config repo; skipping clone."
