@@ -41,11 +41,6 @@
         "PWTEST_DAEMON_SESSION_DIR": "/data/data/com.termux/files/home/.cache/ms-playwright/daemon"
       },
       "enabled": true
-    },
-    "context7": {
-      "type": "remote",
-      "url": "https://mcp.context7.com/mcp",
-      "enabled": true
     }
   }
 }
