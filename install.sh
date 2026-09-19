@@ -71,9 +71,9 @@ else
   # On non-Termux the prerequisites are installed via the distro package
   # manager when missing, mirroring the Termux branch above. A fresh Arch
   # WSL2 ships neither git (not in the base group) nor which (dropped from
-  # base), and the official opencode installer calls `which opencode`
-  # (opencode.ai/install line 223), so with `set -e` a missing command
-  # aborts the whole install.
+  # base) nor unzip (required by the bun installer), and the official
+  # opencode installer calls `which opencode` (opencode.ai/install line 223),
+  # so with `set -e` a missing command aborts the whole install.
   install_pkg() {
     if command -v pacman >/dev/null 2>&1; then
       pacman -S --needed --noconfirm "$@"
@@ -89,7 +89,7 @@ else
   }
 
   missing=""
-  for cmd in curl git; do
+  for cmd in curl git unzip; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
       missing="$missing $cmd"
     fi
