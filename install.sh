@@ -74,6 +74,23 @@ else
       exit 1
     fi
   done
+  # The official opencode installer (opencode.ai/install) calls `which opencode`
+  # (install.sh line 223); Arch and other minimal distros do not ship `which`
+  # by default, and with `set -e` the missing command aborts the whole install.
+  if ! command -v which >/dev/null 2>&1; then
+    log "Installing 'which' (required by the opencode installer)..."
+    if command -v pacman >/dev/null 2>&1; then
+      pacman -S --needed --noconfirm which
+    elif command -v apt-get >/dev/null 2>&1; then
+      apt-get update && apt-get install -y which
+    elif command -v dnf >/dev/null 2>&1; then
+      dnf install -y which
+    elif command -v apk >/dev/null 2>&1; then
+      apk add --no-cache which
+    else
+      warn "No package manager found to install 'which'; the opencode installer may fail."
+    fi
+  fi
 fi
 
 # 2. bun — runtime used by the Playwright MCP command and dependency installs.
@@ -88,15 +105,18 @@ else
   if ! command -v bun >/dev/null 2>&1; then
     log "Installing bun..."
     curl -fsSL https://bun.sh/install | bash
-    export PATH="$HOME/.bun/bin:$PATH"
+    # The bun installer honors $BUN_INSTALL over $HOME; export the actual
+    # install dir so the check below passes in both cases.
+    export PATH="${BUN_INSTALL:-$HOME/.bun}/bin:$PATH"
   fi
 fi
 command -v bun >/dev/null 2>&1 || { echo "bun install failed" >&2; exit 1; }
 
 # 3. BUN_OPTIONS — proot's link2symlink converts hardlinks to .l2s symlinks,
-#    which breaks bunx and bun install. Force bun to copy files instead.
-#    Irrelevant on Termux, where hardlinks work natively.
-if [ "$TERMUX" != "1" ]; then
+#    which breaks bunx and bun install. Only needed under proot; on a normal
+#    system the default hardlink backend is faster. Irrelevant on Termux,
+#    where hardlinks work natively.
+if [ "$TERMUX" != "1" ] && command -v proot >/dev/null 2>&1; then
   if ! grep -q 'BUN_OPTIONS' "$HOME/.bashrc" 2>/dev/null; then
     log "Adding BUN_OPTIONS=--backend=copyfile to ~/.bashrc..."
     cat >> "$HOME/.bashrc" <<'EOF'
@@ -208,7 +228,12 @@ elif [ -d "$CONFIG_DIR/.git" ]; then
   remote="$(git -C "$CONFIG_DIR" remote get-url origin 2>/dev/null || true)"
   if [ "$remote" = "$REPO_URL" ]; then
     log "Updating existing config repo..."
-    git -C "$CONFIG_DIR" pull --ff-only
+    # Local modifications (e.g. the per-user path rewrites below) make a
+    # fast-forward pull fail; warn and keep the existing checkout instead of
+    # aborting the whole install.
+    if ! git -C "$CONFIG_DIR" pull --ff-only; then
+      warn "git pull failed (local modifications?); keeping the existing checkout."
+    fi
   else
     backup_dir="${CONFIG_DIR}.bak-$(date +%Y%m%d-%H%M%S)"
     warn "Existing config has a different origin; backing it up to $backup_dir"
@@ -399,25 +424,37 @@ if [ "$TERMUX" = "1" ]; then
   fi
 fi
 
-# 12b. On Linux/macOS the mcp.playwright command is pinned to the same
-#      @playwright/mcp version used for the browser install in step 8, so
-#      the chromium revision the server launches always matches the one
-#      install.sh downloaded. Without this, `@latest` resolves at opencode
-#      startup to a newer version whose playwright-core expects a different
-#      browser revision. Idempotent: the sed rewrites the version token to
-#      the same value once done.
+# 12b. On Linux/macOS the mcp.playwright command is rewritten for the local
+#      platform: the committed config ships a Termux command (bunx --bun,
+#      --executable-path, Termux --config path) that must not survive here.
+#      The version is pinned to the same @playwright/mcp used for the browser
+#      install in step 8, so the chromium revision the server launches always
+#      matches the one install.sh downloaded. Without the pin, `@latest`
+#      resolves at opencode startup to a newer version whose playwright-core
+#      expects a different browser revision. The Termux environment block
+#      (PLAYWRIGHT_BROWSERS_PATH and the PWTEST/PWMCP Android workarounds) is
+#      dropped too: on Linux those variables point at nonexistent
+#      /data/data/com.termux paths and break browser discovery.
 if [ "$TERMUX" != "1" ]; then
   if grep -q '"@playwright/mcp@' opencode.jsonc; then
-    log "Pinning mcp.playwright command to @playwright/mcp@$MCP_VERSION_LINUX..."
-    sed -i "s|\(\s*\)\"command\": \[\".*@playwright/mcp@[^\" ]*\"|\1\"command\": [\"bun\", \"x\", \"@playwright/mcp@$MCP_VERSION_LINUX\"|" opencode.jsonc
+    log "Rewriting mcp.playwright command for Linux/macOS (@playwright/mcp@$MCP_VERSION_LINUX)..."
+    sed -i "s|^\(\s*\)\"command\": \[.*\"@playwright/mcp@[^\" ]*\".*|\1\"command\": [\"bun\", \"x\", \"@playwright/mcp@$MCP_VERSION_LINUX\", \"--headless\", \"--no-sandbox\", \"--config\", \"$CONFIG_DIR/playwright-mcp.json\"],|" opencode.jsonc
+    sed -i '/"environment": {/,/},/d' opencode.jsonc
   else
     warn "Could not find the @playwright/mcp command in opencode.jsonc; pin it manually to @playwright/mcp@$MCP_VERSION_LINUX."
   fi
 fi
 
-# 13. Fix absolute paths in opencode.jsonc for the current user.
+# 13. Fix absolute paths in opencode.jsonc for the current user. The committed
+#     config ships Termux paths (/data/data/com.termux/files/home and
+#     /data/data/com.termux/files/usr); rewrite them for this machine. The
+#     legacy /home/azrial form is handled too.
+if grep -q "/data/data/com.termux" opencode.jsonc; then
+  log "Adjusting Termux absolute paths in opencode.jsonc to $HOME..."
+  sed -i "s|/data/data/com.termux/files/home|$HOME|g; s|/data/data/com.termux/files/usr|/usr|g" opencode.jsonc
+fi
 if grep -q "/home/azrial" opencode.jsonc; then
-  log "Adjusting absolute paths in opencode.jsonc to $HOME..."
+  log "Adjusting legacy absolute paths in opencode.jsonc to $HOME..."
   sed -i "s|/home/azrial|$HOME|g" opencode.jsonc
 fi
 
