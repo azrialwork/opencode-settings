@@ -76,6 +76,12 @@ else
   # so with `set -e` a missing command aborts the whole install.
   install_pkg() {
     if command -v pacman >/dev/null 2>&1; then
+      # A fresh Arch WSL2 may ship with no package databases at all
+      # ("database file for 'core' does not exist"), so refresh the index
+      # before installing; harmless when the databases are already current.
+      if ! pacman -Sy --noconfirm >/dev/null 2>&1; then
+        warn "pacman -Sy failed; trying to install anyway."
+      fi
       pacman -S --needed --noconfirm "$@"
     elif command -v apt-get >/dev/null 2>&1; then
       apt-get update && apt-get install -y "$@"
