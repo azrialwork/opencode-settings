@@ -27,6 +27,15 @@ CONFIG_DIR="${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}"
 # allows Android; newer versions may work, but this one is verified.
 MCP_VERSION="0.0.81"
 
+# MCP server version pinned on Linux/macOS. 0.0.82's bundled playwright-core
+# installs both the full chromium build and the separate
+# chromium-headless-shell build that headless mode launches; pinning here —
+# and rewriting the mcp.playwright command in opencode.jsonc to the same
+# version (step 12b) — keeps the installed browser revision in lockstep with
+# the MCP server. Without the pin, `@latest` resolves at different times
+# (install.sh run vs. opencode startup) and the browser revision drifts.
+MCP_VERSION_LINUX="0.0.82"
+
 # Repo directory when run as a file; empty when piped to bash via stdin.
 SCRIPT_DIR=""
 if [ -n "${BASH_SOURCE[0]:-}" ]; then
@@ -275,8 +284,8 @@ if [ "$TERMUX" = "1" ]; then
     fi
   fi
 else
-  log "Installing Playwright chromium browser..."
-  bunx @playwright/mcp install-browser chromium
+  log "Installing Playwright chromium browser (matching @playwright/mcp@$MCP_VERSION_LINUX)..."
+  bunx "@playwright/mcp@$MCP_VERSION_LINUX" install-browser chromium
 fi
 
 # 9. System dependencies for the chromium browser. The MCP server launches
@@ -332,20 +341,28 @@ if [ "$TERMUX" = "1" ]; then
   CHROME_BIN="$PREFIX/bin/chromium-browser"
 else
   CHROME_BIN="$(find "$HOME/.cache/ms-playwright" -path '*/chrome-linux*/chrome' 2>/dev/null | head -n1 || true)"
-  if [ -n "$CHROME_BIN" ] && command -v ldd >/dev/null 2>&1; then
-    missing="$(ldd "$CHROME_BIN" 2>/dev/null | awk '/not found/{print $1}' | sort -u || true)"
-    if [ -n "$missing" ]; then
-      warn "Chromium still missing libraries: $missing"
-    else
-      log "Chromium shared libraries resolved."
+  # Headless mode launches the separate chromium-headless-shell build, so
+  # check its libraries too, not just the full chromium build.
+  CHROME_HEADLESS_SHELL="$(find "$HOME/.cache/ms-playwright" -path '*/chrome-headless-shell-linux*/chrome-headless-shell' 2>/dev/null | head -n1 || true)"
+  for bin in "$CHROME_BIN" "$CHROME_HEADLESS_SHELL"; do
+    if [ -n "$bin" ] && command -v ldd >/dev/null 2>&1; then
+      missing="$(ldd "$bin" 2>/dev/null | awk '/not found/{print $1}' | sort -u || true)"
+      if [ -n "$missing" ]; then
+        warn "Chromium still missing libraries: $missing"
+      else
+        log "Chromium shared libraries resolved ($(basename "$bin"))."
+      fi
     fi
-  fi
+  done
 fi
 
 # 11. Smoke test: launch the exact chromium binary the MCP server uses.
-if [ -n "$CHROME_BIN" ] && [ -x "$CHROME_BIN" ]; then
-  log "Smoke-testing chromium launch..."
-  if "$CHROME_BIN" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
+#     Headless mode uses the chromium-headless-shell build; prefer it and
+#     fall back to the full chromium build (which is what Termux uses).
+SMOKE_BIN="${CHROME_HEADLESS_SHELL:-$CHROME_BIN}"
+if [ -n "$SMOKE_BIN" ] && [ -x "$SMOKE_BIN" ]; then
+  log "Smoke-testing chromium launch ($(basename "$SMOKE_BIN"))..."
+  if "$SMOKE_BIN" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
       --dump-dom "data:text/html,<h1>playwright-ok</h1>" 2>/dev/null | grep -q "playwright-ok"; then
     log "Chromium launched successfully."
   else
@@ -379,6 +396,22 @@ if [ "$TERMUX" = "1" ]; then
     # config this repo ships.
     sed -i '/"environment": {/,/},/d' opencode.jsonc
     sed -i '/"command": \["bunx"/a\      "environment": {\n        "PLAYWRIGHT_BROWSERS_PATH": "0",\n        "PWMCP_PROFILES_DIR_FOR_TEST": "'"$HOME"'/.cache/ms-playwright-mcp",\n        "PWTEST_SERVER_REGISTRY": "'"$HOME"'/.cache/ms-playwright/b",\n        "PWTEST_DAEMON_SESSION_DIR": "'"$HOME"'/.cache/ms-playwright/daemon"\n      },' opencode.jsonc
+  fi
+fi
+
+# 12b. On Linux/macOS the mcp.playwright command is pinned to the same
+#      @playwright/mcp version used for the browser install in step 8, so
+#      the chromium revision the server launches always matches the one
+#      install.sh downloaded. Without this, `@latest` resolves at opencode
+#      startup to a newer version whose playwright-core expects a different
+#      browser revision. Idempotent: the sed rewrites the version token to
+#      the same value once done.
+if [ "$TERMUX" != "1" ]; then
+  if grep -q '"@playwright/mcp@' opencode.jsonc; then
+    log "Pinning mcp.playwright command to @playwright/mcp@$MCP_VERSION_LINUX..."
+    sed -i "s|\(\s*\)\"command\": \[\".*@playwright/mcp@[^\" ]*\"|\1\"command\": [\"bun\", \"x\", \"@playwright/mcp@$MCP_VERSION_LINUX\"|" opencode.jsonc
+  else
+    warn "Could not find the @playwright/mcp command in opencode.jsonc; pin it manually to @playwright/mcp@$MCP_VERSION_LINUX."
   fi
 fi
 
