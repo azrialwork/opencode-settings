@@ -68,26 +68,43 @@ if [ "$TERMUX" = "1" ]; then
   pkg install -f -y
   pkg install -y git curl unzip ripgrep
 else
+  # On non-Termux the prerequisites are installed via the distro package
+  # manager when missing, mirroring the Termux branch above. A fresh Arch
+  # WSL2 ships neither git (not in the base group) nor which (dropped from
+  # base), and the official opencode installer calls `which opencode`
+  # (opencode.ai/install line 223), so with `set -e` a missing command
+  # aborts the whole install.
+  install_pkg() {
+    if command -v pacman >/dev/null 2>&1; then
+      pacman -S --needed --noconfirm "$@"
+    elif command -v apt-get >/dev/null 2>&1; then
+      apt-get update && apt-get install -y "$@"
+    elif command -v dnf >/dev/null 2>&1; then
+      dnf install -y "$@"
+    elif command -v apk >/dev/null 2>&1; then
+      apk add --no-cache "$@"
+    else
+      return 1
+    fi
+  }
+
+  missing=""
   for cmd in curl git; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
-      echo "Missing required command: $cmd" >&2
-      exit 1
+      missing="$missing $cmd"
     fi
   done
-  # The official opencode installer (opencode.ai/install) calls `which opencode`
-  # (install.sh line 223); Arch and other minimal distros do not ship `which`
-  # by default, and with `set -e` the missing command aborts the whole install.
+  if [ -n "$missing" ]; then
+    log "Installing missing prerequisites:$missing"
+    if ! install_pkg $missing; then
+      echo "Missing required command(s):$missing — install them manually." >&2
+      exit 1
+    fi
+  fi
+
   if ! command -v which >/dev/null 2>&1; then
     log "Installing 'which' (required by the opencode installer)..."
-    if command -v pacman >/dev/null 2>&1; then
-      pacman -S --needed --noconfirm which
-    elif command -v apt-get >/dev/null 2>&1; then
-      apt-get update && apt-get install -y which
-    elif command -v dnf >/dev/null 2>&1; then
-      dnf install -y which
-    elif command -v apk >/dev/null 2>&1; then
-      apk add --no-cache which
-    else
+    if ! install_pkg which; then
       warn "No package manager found to install 'which'; the opencode installer may fail."
     fi
   fi
