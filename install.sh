@@ -52,6 +52,16 @@ fi
 log() { printf '\033[1;32m[install]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[install]\033[0m %s\n' "$*"; }
 
+# Package installs need root. Debian/Ubuntu WSL2 default to a non-root user,
+# so prefix the package manager with sudo there; root users get no prefix.
+pkg_runner() {
+  if [ "$(id -u)" -eq 0 ] || ! command -v sudo >/dev/null 2>&1; then
+    echo ""
+  else
+    echo "sudo"
+  fi
+}
+
 # 1. Prerequisites: curl and git are required. On Termux they are installed
 #    via pkg, together with unzip (opencode release) and
 #    ripgrep (opencode runtime dependency). pkg upgrade runs first because
@@ -75,20 +85,22 @@ else
   # opencode installer calls `which opencode` (opencode.ai/install line 223),
   # so with `set -e` a missing command aborts the whole install.
   install_pkg() {
+    local runner
+    runner="$(pkg_runner)"
     if command -v pacman >/dev/null 2>&1; then
       # A fresh Arch WSL2 may ship with no package databases at all
       # ("database file for 'core' does not exist"), so refresh the index
       # before installing; harmless when the databases are already current.
-      if ! pacman -Sy --noconfirm >/dev/null 2>&1; then
+      if ! $runner pacman -Sy --noconfirm >/dev/null 2>&1; then
         warn "pacman -Sy failed; trying to install anyway."
       fi
-      pacman -S --needed --noconfirm "$@"
+      $runner pacman -S --needed --noconfirm "$@"
     elif command -v apt-get >/dev/null 2>&1; then
-      apt-get update && apt-get install -y "$@"
+      $runner apt-get update && $runner apt-get install -y "$@"
     elif command -v dnf >/dev/null 2>&1; then
-      dnf install -y "$@"
+      $runner dnf install -y "$@"
     elif command -v apk >/dev/null 2>&1; then
-      apk add --no-cache "$@"
+      $runner apk add --no-cache "$@"
     else
       return 1
     fi
@@ -368,9 +380,11 @@ fi
 #    container does not ship. Playwright's own `install-deps` only covers
 #    Debian/Ubuntu and Alpine, so the lists are maintained here per distro.
 install_playwright_system_deps() {
+  local runner
+  runner="$(pkg_runner)"
   if command -v pacman >/dev/null 2>&1; then
     log "Installing chromium system dependencies (pacman)..."
-    pacman -S --needed --noconfirm \
+    $runner pacman -S --needed --noconfirm \
       alsa-lib atk at-spi2-atk at-spi2-core cairo dbus expat fontconfig \
       freetype2 gdk-pixbuf2 glib2 gtk3 libcups libdrm libx11 libxcb \
       libxcomposite libxdamage libxext libxfixes libxkbcommon libxrandr \
@@ -379,21 +393,21 @@ install_playwright_system_deps() {
       xorg-xrandr
   elif command -v apt-get >/dev/null 2>&1; then
     log "Installing chromium system dependencies (apt-get)..."
-    apt-get update
-    apt-get install -y \
+    $runner apt-get update
+    $runner apt-get install -y \
       libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
       libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
       libgbm1 libasound2 libpango-1.0-0 libcairo2 libx11-6 libxcb1 \
       libxext6 libxi6 libxtst6 libxss1 fonts-liberation
   elif command -v dnf >/dev/null 2>&1; then
     log "Installing chromium system dependencies (dnf)..."
-    dnf install -y \
+    $runner dnf install -y \
       nss nspr atk at-spi2-atk cups-libs libdrm libxkbcommon libXcomposite \
       libXdamage libXfixes libXrandr mesa-libgbm alsa-lib pango cairo \
       libX11 libxcb libXext libXi libXtst libXScrnSaver
   elif command -v apk >/dev/null 2>&1; then
     log "Installing chromium system dependencies (apk)..."
-    apk add --no-cache \
+    $runner apk add --no-cache \
       nss nspr atk at-spi2-atk cups-libs libdrm libxkbcommon libxcomposite \
       libxdamage libxfixes libxrandr mesa-gbm alsa-lib pango cairo \
       libx11 libxcb libxext
